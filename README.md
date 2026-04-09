@@ -1,1 +1,1 @@
-# SmallC
+# [專案名稱] - A Small C Implementation in Python 3
