@@ -45,6 +45,34 @@ class Lexer:
             self.advance()
         self.advance() # 跳過結尾引號
         return Token('STRING_CONST', result, self.line)
+    
+    def _skip_comment(self):
+        """跳過註解（單行 // 或多行 /* */）"""
+        if self.current_char == '/' and self.next_char() == '/':
+            # 單行註解：一直讀到換行符號為止
+            while self.current_char is not None and self.current_char != '\n':
+                self.advance()
+            # 換行符號會交給 skip_whitespace 處理，這裡直接結束
+            
+        elif self.current_char == '/' and self.next_char() == '*':
+            # 多行註解：跳過開頭的 /*
+            self.advance() # 跳過 /
+            self.advance() # 跳過 *
+            
+            # 持續讀取直到看到 */
+            while self.current_char is not None:
+                if self.current_char == '*' and self.next_char() == '/':
+                    self.advance() # 跳過 *
+                    self.advance() # 跳過 /
+                    return # 註解結束
+                
+                if self.current_char == '\n':
+                    self.line += 1
+                    
+                self.advance()
+            
+            # 如果讀到檔案結尾還沒看到 */，通常會報錯
+            raise Exception(f'Lexer Error: Unclosed block comment at line {self.line}')
 
     def integer(self):
         """讀取整數常數（包含十進位與十六進位）"""
@@ -163,19 +191,19 @@ class Lexer:
                 return Token('LT', '<', self.line)
 
             if self.current_char == '-':
-                if self.next_char == '-':
+                if self.next_char() == '-':
                     self.advance()
                     self.advance()
-                    return Token('MINUS_ONE', '--', self.line)
-                if self.next_char == '=':
+                    return Token('SUB_ONE', '--', self.line)
+                if self.next_char() == '=':
                     self.advance()
                     self.advance()
                     return Token('SUB_ASSIGN', '-=', self.line)
                 self.advance()
-                return Token('MINUS', '-', self.line)
+                return Token('SUB', '-', self.line)
             
             if self.current_char == '*':
-                if self.next_char == '=':
+                if self.next_char() == '=':
                     self.advance()
                     self.advance()
                     return Token('MUL_ASSIGN', '*=', self.line)
@@ -183,10 +211,13 @@ class Lexer:
                 return Token('MUL', '*', self.line)
             
             if self.current_char == '/':
-                if self.next_char == '=':
+                if self.next_char() == '=':
                     self.advance()
                     self.advance()
                     return Token('DIV_ASSIGN', '/=', self.line)
+                if self.next_char() == '/' or self.next_char() == '*':
+                    self._skip_comment()
+                    continue  # 註解跳過後，繼續找下一個真正的 Token
                 self.advance()
                 return Token('DIV', '/', self.line)
             
