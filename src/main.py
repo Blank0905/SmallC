@@ -2,7 +2,7 @@ from lexer import Lexer, Token
 
 def main():
     # 模擬使用者輸入
-    code = "2 + (10 * 0x9F) / 2 == 50 && 1 != 0 || 3 >= 2"
+    code = ' "Hello World" "" "123 + \t456" \n int a = 10'
     
     # 初始化 Lexer
     lexer = Lexer(code)

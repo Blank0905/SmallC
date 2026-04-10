@@ -69,6 +69,34 @@ class Lexer:
             self.advance()
         return int(result)
     
+    def _identifier(self):
+        """處理變數名稱與關鍵字"""
+        result = ''
+        # 持續讀取字母、數字或底線
+        while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_'):
+            result += self.current_char
+            self.advance()
+
+        # 關鍵字對照表
+        keywords = {
+            'int': 'INT_TYPE',
+            'char': 'CHAR_TYPE',
+            'void': 'VOID_TYPE',
+            'if': 'IF',
+            'while': 'WHILE',
+            'for': 'FOR',
+            'do': 'DO',
+            'else': 'ELSE',
+            'break': 'BREAK',
+            'continue': 'CONTINUE',
+            'return': 'RETURN',
+            'main': 'MAIN'
+        }
+
+        # 查表決定 Token 類型
+        token_type = keywords.get(result, 'ID')
+        return Token(token_type, result, self.line)
+    
     def get_next_token(self):
         while self.current_char is not None:
             if self.current_char.isspace():
@@ -78,6 +106,9 @@ class Lexer:
             # 辨識整數
             if self.current_char.isdigit():
                 return Token('INT_CONST', self.integer(), self.line)
+            
+            if self.current_char.isalpha() or self.current_char == '_':
+                return self._identifier()
             
             # 字串處理
             if self.current_char == '"':
