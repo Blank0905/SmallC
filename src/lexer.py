@@ -13,6 +13,20 @@ class Lexer:
         self.pos = 0        # 當前字元位置
         self.current_char = self.text[self.pos] if self.text else None
         self.line = 1       # 記錄行號以供錯誤回報
+        self.escape_map = {'n': '\n', 't': '\t', '0': '\0', '\\': '\\', "'": "'", '"': '"'}
+        self.keywords = {
+            'int': 'INT_TYPE',
+            'char': 'CHAR_TYPE',
+            'void': 'VOID_TYPE',
+            'if': 'IF',
+            'while': 'WHILE',
+            'for': 'FOR',
+            'do': 'DO',
+            'else': 'ELSE',
+            'break': 'BREAK',
+            'continue': 'CONTINUE',
+            'return': 'RETURN'
+        }
 
     def advance(self):
         """移動到下一個字元"""
@@ -36,62 +50,92 @@ class Lexer:
                 self.line += 1
             self.advance()
 
-    def _string(self):
-        """處理字串常數 "..." """
-        result = ''
-        self.advance() # 跳過開頭引號
-        while self.current_char is not None and self.current_char != '"':
-            result += self.current_char
+    def _char(self):
+        """處理字元常數 '...'"""
+        self.advance() # 跳過 '
+        if self.current_char == "'":
+            raise Exception(f"Lexer Error: Empty character constant at line {self.line}")
+        
+        if self.current_char == '\\': # 跳脫序列
             self.advance()
-        self.advance() # 跳過結尾引號
-        return Token('STRING_CONST', result, self.line)
+            val = self.escape_map.get(self.current_char, self.current_char)
+        else:
+            val = self.current_char
+            
+        self.advance()
+        if self.current_char != "'":
+            raise Exception(f"Lexer Error: Character not closed at line {self.line}")
+        self.advance() # 跳過結尾 '
+        return Token('CHAR_CONST', val, self.line)
     
-    def _skip_comment(self):
-        """跳過註解（單行 // 或多行 /* */）"""
-        if self.current_char == '/' and self.next_char() == '/':
-            # 單行註解：一直讀到換行符號為止
-            while self.current_char is not None and self.current_char != '\n':
+    def _string(self):
+        """處理字串常數 "..." 並支援跳脫序列"""
+        result = ''
+        self.advance()  # 跳過開頭引號 "
+        
+        while self.current_char is not None and self.current_char != '"':
+            if self.current_char == '\\':  # 偵測到跳脫字元
                 self.advance()
-            # 換行符號會交給 skip_whitespace 處理，這裡直接結束
+                result += self.escape_map.get(self.current_char, self.current_char)
+            else:
+                result += self.current_char
+            self.advance()
             
-        elif self.current_char == '/' and self.next_char() == '*':
-            # 多行註解：跳過開頭的 /*
-            self.advance() # 跳過 /
-            self.advance() # 跳過 *
+        if self.current_char != '"':
+            raise Exception(f"Lexer Error: String not closed at line {self.line}")
             
-            # 持續讀取直到看到 */
-            while self.current_char is not None:
-                if self.current_char == '*' and self.next_char() == '/':
-                    self.advance() # 跳過 *
-                    self.advance() # 跳過 /
-                    return # 註解結束
-                
-                if self.current_char == '\n':
-                    self.line += 1
-                    
-                self.advance()
+        self.advance()  # 跳過結尾引號 "
+        
+        return Token('STRING_CONST', result + '\0', self.line)
+        
+    def _skip_single_line_comment(self):
+        """跳過 // 註解"""
+        # 進來前 get_next_token 已經確認過是 // 了
+        # 消耗掉開頭的兩個 /
+        self.advance()
+        self.advance()
+        # 一直讀到行末或檔案結束
+        while self.current_char is not None and self.current_char != '\n':
+            self.advance()
+        # 停在 \n，交給下一輪 skip_whitespace 處理
+
+    def _skip_multi_line_comment(self):
+        """跳過 /* */ 註解"""
+        # 消耗掉開頭的 /*
+        self.advance()
+        self.advance()
+        
+        while self.current_char is not None:
+            # 偵測結尾 */
+            if self.current_char == '*' and self.next_char() == '/':
+                self.advance() # 消耗 *
+                self.advance() # 消耗 /
+                return 
             
-            # 如果讀到檔案結尾還沒看到 */，通常會報錯
-            raise Exception(f'Lexer Error: Unclosed block comment at line {self.line}')
+            if self.current_char == '\n':
+                self.line += 1
+            self.advance()
+            
+        # 如果沒看到 */ 就結束了，拋出錯誤
+        raise Exception(f'Lexer Error: Unclosed block comment at line {self.line}')
 
     def integer(self):
         """讀取整數常數（包含十進位與十六進位）"""
-        result = ''
         
         # 處理十六進位 0x 或 0X
-        if self.current_char == '0':
-            result += self.current_char
+        if self.current_char == '0' and self.next_char() in ('x', 'X'):
             self.advance()
-            if self.current_char in ('x', 'X'):
-                result += self.current_char
+            self.advance()
+            hex_digits = ''
+            while self.current_char is not None and (self.current_char.isdigit() or self.current_char.lower() in 'abcdef'):
+                hex_digits += self.current_char
                 self.advance()
-                while self.current_char is not None and \
-                      (self.current_char.isdigit() or self.current_char.lower() in 'abcdef'):
-                    result += self.current_char
-                    self.advance()
-                return int(result, 16)
+            if not hex_digits:
+                raise Exception(f'Lexer Error: Invalid hexadecimal literal at line {self.line}')
+            return int(hex_digits, 16)
 
-        # 處理一般十進位 
+        # 處理一般十進位
+        result = ''
         while self.current_char is not None and self.current_char.isdigit():
             result += self.current_char
             self.advance()
@@ -105,24 +149,8 @@ class Lexer:
             result += self.current_char
             self.advance()
 
-        # 關鍵字對照表
-        keywords = {
-            'int': 'INT_TYPE',
-            'char': 'CHAR_TYPE',
-            'void': 'VOID_TYPE',
-            'if': 'IF',
-            'while': 'WHILE',
-            'for': 'FOR',
-            'do': 'DO',
-            'else': 'ELSE',
-            'break': 'BREAK',
-            'continue': 'CONTINUE',
-            'return': 'RETURN',
-            'main': 'MAIN'
-        }
-
         # 查表決定 Token 類型
-        token_type = keywords.get(result, 'ID')
+        token_type = self.keywords.get(result, 'ID')
         return Token(token_type, result, self.line)
     
     def get_next_token(self):
@@ -138,6 +166,10 @@ class Lexer:
             if self.current_char.isalpha() or self.current_char == '_':
                 return self._identifier()
             
+            #字元處理
+            if self.current_char == '\'':
+                return self._char()
+            
             # 字串處理
             if self.current_char == '"':
                 return self._string()
@@ -147,7 +179,7 @@ class Lexer:
                 if self.next_char() == '+':
                     self.advance()
                     self.advance()
-                    return Token('PLUS_ONE', '++', self.line)
+                    return Token('INC', '++', self.line)
                 if self.next_char() == '=':
                     self.advance()
                     self.advance()
@@ -194,13 +226,17 @@ class Lexer:
                 if self.next_char() == '-':
                     self.advance()
                     self.advance()
-                    return Token('SUB_ONE', '--', self.line)
+                    return Token('DEC', '--', self.line)
                 if self.next_char() == '=':
                     self.advance()
                     self.advance()
                     return Token('SUB_ASSIGN', '-=', self.line)
+                if self.next_char() == '>':
+                    self.advance()
+                    self.advance()
+                    return Token('ARROW', '->', self.line)
                 self.advance()
-                return Token('SUB', '-', self.line)
+                return Token('MINUS', '-', self.line)
             
             if self.current_char == '*':
                 if self.next_char() == '=':
@@ -211,13 +247,16 @@ class Lexer:
                 return Token('MUL', '*', self.line)
             
             if self.current_char == '/':
+                if self.next_char() == '/':
+                    self._skip_single_line_comment()
+                    continue  # 註解跳過後，繼續找下一個真正的 Token
+                if self.next_char() == '*':
+                    self._skip_multi_line_comment()
+                    continue
                 if self.next_char() == '=':
                     self.advance()
                     self.advance()
                     return Token('DIV_ASSIGN', '/=', self.line)
-                if self.next_char() == '/' or self.next_char() == '*':
-                    self._skip_comment()
-                    continue  # 註解跳過後，繼續找下一個真正的 Token
                 self.advance()
                 return Token('DIV', '/', self.line)
             
@@ -247,7 +286,6 @@ class Lexer:
                 self.advance()
                 return Token('MOD', '%', self.line)
             
-            # 辨識括號
             if self.current_char == '(':
                 self.advance()
                 return Token('LPAREN', '(', self.line)
@@ -255,6 +293,43 @@ class Lexer:
             if self.current_char == ')':
                 self.advance()
                 return Token('RPAREN', ')', self.line)
+            
+            if self.current_char == '[':
+                self.advance()
+                return Token('LBRACK', '[', self.line)
+            
+            if self.current_char == ']':
+                self.advance()
+                return Token('RBRACK', ']', self.line)
+            
+            if self.current_char == '{':
+                self.advance()
+                return Token('LBRACE', '{', self.line)
+            
+            if self.current_char == '}':
+                self.advance()
+                return Token('RBRACE', '}', self.line)
+            
+            if self.current_char == ':':
+                self.advance()
+                return Token('COLON', ':', self.line)
+            
+            if self.current_char == ',':
+                self.advance()
+                return Token('COMMA', ',', self.line)
+            
+            if self.current_char == ';':
+                self.advance()
+                return Token('SEMI', ';', self.line)
+            
+            if self.current_char == '?':
+                self.advance()
+                return Token('QUESTION', '?', self.line)
+            
+            if self.current_char == '~':
+                self.advance()
+                return Token('BIT_NOT', '~', self.line)
+            
 
             # 如果遇到無法辨識的字元，報錯
             raise Exception(f'Lexer Error: Unknown character {self.current_char} at line {self.line}')
