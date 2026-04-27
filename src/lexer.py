@@ -13,7 +13,15 @@ class Lexer:
         self.pos = 0        # 當前字元位置
         self.current_char = self.text[self.pos] if self.text else None
         self.line = 1       # 記錄行號以供錯誤回報
-        self.escape_map = {'n': '\n', 't': '\t', '0': '\0', '\\': '\\', "'": "'", '"': '"'}
+        self.escape_map = {
+            'n':  '\n',   # \n → 換行
+            't':  '\t',   # \t → Tab
+            '0':  '\0',   # \0 → null
+            'r':  '\r',   # \r → enter作業沒說要
+            '\\': '\\',   # \\ → 反斜線
+            "'":  "'",    # \' → 單引號
+            '"':  '"',    # \" → 雙引號
+        }
         self.keywords = {
             'int': 'INT_TYPE',
             'char': 'CHAR_TYPE',
@@ -43,6 +51,16 @@ class Lexer:
             return None
         return self.text[next_pos]
 
+    def tokenize(self):
+        """回傳所有 Token 的列表，直到 EOF"""
+        tokens = []
+        while True:
+            token = self.get_next_token()
+            tokens.append(token)
+            if token.type == 'EOF':
+                break
+        return tokens
+
     def skip_whitespace(self):
         """跳過空白、換行與定位符"""
         while self.current_char is not None and self.current_char.isspace():
@@ -58,7 +76,9 @@ class Lexer:
         
         if self.current_char == '\\': # 跳脫序列
             self.advance()
-            val = self.escape_map.get(self.current_char, self.current_char)
+            val = self.escape_map.get(self.current_char)
+            if val is None:
+                raise Exception(f"Lexer Error: Unknown escape sequence '\\{self.current_char}' at line {self.line}")
         else:
             val = self.current_char
             
@@ -76,8 +96,15 @@ class Lexer:
         while self.current_char is not None and self.current_char != '"':
             if self.current_char == '\\':  # 偵測到跳脫字元
                 self.advance()
-                result += self.escape_map.get(self.current_char, self.current_char)
+                if self.current_char is None:  # 反斜線後直接 EOF
+                    raise Exception(f"Lexer Error: Unexpected EOF after backslash in string at line {self.line}")
+                escaped = self.escape_map.get(self.current_char)
+                if escaped is None:
+                    raise Exception(f"Lexer Error: Unknown escape sequence '\\{self.current_char}' at line {self.line}")
+                result += escaped
             else:
+                if self.current_char == '\n':  # C 不允許字串字面量包含真實換行
+                    raise Exception(f"Lexer Error: Unterminated string literal (literal newline in string) at line {self.line}")
                 result += self.current_char
             self.advance()
             
@@ -86,7 +113,7 @@ class Lexer:
             
         self.advance()  # 跳過結尾引號 "
         
-        return Token('STRING_CONST', result + '\0', self.line)
+        return Token('STRING_CONST', result, self.line) #這邊最後沒有\0 之後再後面再弄
         
     def _skip_single_line_comment(self):
         """跳過 // 註解"""
@@ -330,11 +357,11 @@ class Lexer:
                 self.advance()
                 return Token('BIT_NOT', '~', self.line)
             
+            if self.current_char == '.':
+                self.advance()
+                return Token('DOT', '.', self.line)
 
             # 如果遇到無法辨識的字元，報錯
             raise Exception(f'Lexer Error: Unknown character {self.current_char} at line {self.line}')
 
         return Token('EOF', None, self.line) # 結束符號
-
-
-                 # 最後印出 EOF
