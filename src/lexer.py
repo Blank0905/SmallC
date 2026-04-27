@@ -154,7 +154,7 @@ class Lexer:
             self.advance()
             self.advance()
             hex_digits = ''
-            while self.current_char is not None and (self.current_char.isdigit() or self.current_char.lower() in 'abcdef'):
+            while self.current_char is not None and (self.current_char.isdigit() or self.current_char.lower() in {'a', 'b', 'c', 'd', 'e', 'f'}):
                 hex_digits += self.current_char
                 self.advance()
             if not hex_digits:

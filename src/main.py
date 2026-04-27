@@ -230,7 +230,7 @@ def main():
     run_parser_test("var decl + add",
         "int add(int a, int b) { int x = a + b; return x; }")
     run_parser_test("if-else",
-        "int f(int x) { if (x > 0) { return 1; } else { return 0; } }")
+        "int f(int x) { if (x > 0) { return 1; } else if (x==0){ return 0; } else {return -1;} }")
     run_parser_test("while loop",
         "void loop() { int i = 0; while (i < 10) { i = i + 1; } }")
     run_parser_test("for loop",
