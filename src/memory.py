@@ -15,8 +15,8 @@ class Memory:
     
     def __init__(self, size_bytes=65536):
         self.size = size_bytes
-        self.memory = bytearray(size_bytes)
-        
+        self.memory = bytearray(size_bytes) #宣告一個65536byte的array
+         
         self.heap_ptr = 0           # 全域指標，從 0 開始往上長
         self.stack_ptr = size_bytes # 堆疊指標，從尾巴往下長
         self.fp_stack = []          # 紀錄函式呼叫的 Frame Pointer (FP)
@@ -65,21 +65,25 @@ class Memory:
         """讀取 4 bytes 的有號整數 (Little Endian)"""
         if addr < 0 or addr + 4 > self.size:
             raise MemoryError(f"Segmentation fault at address {addr}")
-        return struct.unpack('<i', self.memory[addr:addr+4])[0]
+        # 將 4 個 byte 組合回整數，明確認定為「小端序」與「有號整數」
+        raw_bytes = self.memory[addr:addr+4]
+        return int.from_bytes(raw_bytes, byteorder='little', signed=True)
         
     def write_int(self, addr, value):
         """寫入 4 bytes 的有號整數 (Little Endian)"""
         if addr < 0 or addr + 4 > self.size:
             raise MemoryError(f"Segmentation fault at address {addr}")
-        # 處理 Python 的大整數溢位，確保轉為 32-bit signed int
+        # 處理 Python 的大整數溢位，確保範圍在 32-bit signed int 內
         value = (value + 2**31) % 2**32 - 2**31
-        self.memory[addr:addr+4] = struct.pack('<i', value)
+        # 將整數拆成 4 個 byte
+        self.memory[addr:addr+4] = value.to_bytes(4, byteorder='little', signed=True)
         
     def read_char(self, addr):
         """讀取 1 byte 的有號字元"""
         if addr < 0 or addr + 1 > self.size:
             raise MemoryError(f"Segmentation fault at address {addr}")
-        return struct.unpack('<b', self.memory[addr:addr+1])[0]
+        raw_bytes = self.memory[addr:addr+1]
+        return int.from_bytes(raw_bytes, byteorder='little', signed=True)
         
     def write_char(self, addr, value):
         """寫入 1 byte 的有號字元"""
@@ -89,7 +93,8 @@ class Memory:
         if isinstance(value, str):
             value = ord(value[0])
         value = (value + 128) % 256 - 128
-        self.memory[addr:addr+1] = struct.pack('<b', value)
+        # 將整數拆成 1 個 byte
+        self.memory[addr:addr+1] = value.to_bytes(1, byteorder='little', signed=True)
 
     def read_string(self, addr):
         """從指定位址讀取 C 字串，直到遇到 \0"""
