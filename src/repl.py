@@ -71,8 +71,10 @@ class REPL:
                 self.cmd_run()
             elif command == 'CLEAR':
                 self.cmd_clear()
+            elif command == 'ABOUT':
+                self.cmd_about()
             # 判斷是否為其他預留指令 (防止被當成 C 程式碼)
-            elif command in ('SAVE', 'EDIT', 'DELETE', 'INSERT', 'APPEND', 'RUN', 'CHECK', 'TRACE', 'VARS', 'FUNCS', 'ABOUT', 'CLEAR'):
+            elif command in ('SAVE', 'EDIT', 'DELETE', 'INSERT', 'APPEND', 'CHECK', 'TRACE', 'VARS', 'FUNCS'):
                 print(f"指令 {command} 尚未實作！")
             else:
                 # 作業規定：如果不是任何已知指令，就視為 Small-C 程式碼，直接加入緩衝區！
@@ -145,6 +147,12 @@ class REPL:
     def cmd_clear(self):
         self.code_buffer = []
         return
+
+    def cmd_about(self):
+        print(">> Small-C Interactive Interpreter v1.0")
+        print(">> System Software Final Project, Spring 2026")
+        print("作者1, 2, 3")
+
 
 # # 為了方便測試，可以直接執行此檔案
 # if __name__ == "__main__":

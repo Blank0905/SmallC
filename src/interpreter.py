@@ -57,12 +57,12 @@ class Interpreter:
     def visit_FuncCallNode(self, node):
         """處理函式呼叫，例如 printf("Hello %d", a);"""
         
-        # 1. 遞迴把刮號裡面所有的參數都先算出來
+        # 把刮號裡面所有的參數都先算出來
         args_values = []
         for arg in node.args:
             args_values.append(self.visit(arg))
             
-        # 2. 判斷是不是我們已經寫好的內建函式 (例如 printf, strcmp)
+        # 判斷是不是我們已經寫好的內建函式 (例如 printf, strcmp)
         if self.builtins.is_builtin(node.name):
             # 直接交給 BuiltinManager 去執行，並回傳它執行的結果！
             return self.builtins.call(node.name, args_values)
@@ -111,6 +111,10 @@ class Interpreter:
     def visit_IntLiteralNode(self, node):
         """碰到純數字，執行結果就是數字本身"""
         return node.value
+
+    def visit_CharLiteralNode(self, node):
+        """碰到字元字面量，例如 'a'、'\n'"""
+        return node.value
     
     def visit_StringLiteralNode(self, node):
         """碰到字串字面量 (例如 "Hello")，實作字串池 (String Pooling) 避免記憶體浪費"""
@@ -136,25 +140,63 @@ class Interpreter:
     def visit_VarNode(self, node):
         """碰到變數名稱，例如程式碼裡的 `x + 5` 的 `x`，就要去記憶體把它的值拿出來"""
         
-        # 1. 去符號表查這個變數放在哪裡
+        # 去符號表查這個變數放在哪裡
         symbol = self.symtable.lookup(node.name)
         
-        # 2. 去記憶體的那個位址，把數字讀出來並回傳
+        # 如果這是陣列，不能去讀它的值
+        if symbol.is_array:
+            return symbol.address
+
+        # 去記憶體的那個位址，把數字讀出來並回傳
         if symbol.data_type == 'int':
             return self.memory.read_int(symbol.address)
         elif symbol.data_type == 'char':
             return self.memory.read_char(symbol.address)
         else:
-            # 如果是指標或陣列，我們通常是需要它的位址，而不是裡面的值
+            # 如果是指標，通常也是需要它的位址
             return symbol.address
+
+    def visit_ArrayIndexNode(self, node):
+        """處理陣列讀取，例如: arr[i]"""
+        # 取得陣列的起始位置 (base_addr)
+        base_addr = self.visit(node.array)
+        
+        # 算出索引值 (index)
+        index = self.visit(node.index)
+        
+        # 找出陣列元素的型別 (要知道是 int 還是 char，才能決定讀幾個 bytes)
+        symbol = self.symtable.lookup(node.array.name)
+        data_type = symbol.data_type
+            
+        # 根據型別，計算實際記憶體位置並讀取
+        if data_type == 'int':
+            # int 佔 4 個 bytes
+            target_addr = base_addr + index * 4
+            return self.memory.read_int(target_addr)
+        elif data_type == 'char':
+            # char 佔 1 個 byte
+            target_addr = base_addr + index * 1
+            return self.memory.read_char(target_addr)
 
     # ─── 宣告（Declarations） ─────────────────────────────────────────────────────
 
     def visit_VarDeclNode(self, node):
-        """處理變數宣告，例如: int x = 1 + 2 * 3;"""
+        """處理變數宣告，例如: int x = 1 + 2 * 3; 或 int arr[10];"""
         data_type = node.type_node.base_type # 拿出他的型別
 
-        symbol = self.symtable.define_var(name=node.name, data_type=data_type, is_array=(node.array_size is not None)) # 去符號表註冊此變數，symbol會是一個Symbol物件
+        # 如果是陣列，要先算出陣列長度
+        is_array = (node.array_size is not None)
+        array_len = 0
+        if is_array:
+            array_len = self.visit(node.array_size) # 把中括號裡的表達式算出來 (例如 10)
+
+        # 去符號表註冊此變數 (把算出來的長度傳進去)
+        symbol = self.symtable.define_var(
+            name=node.name, 
+            data_type=data_type, 
+            is_array=is_array, 
+            array_len=array_len
+        )
 
         # 如果宣告時有給初始值 (init_expr)
         if node.init_expr is not None:
@@ -182,6 +224,23 @@ class Interpreter:
     def visit_BinOpNode(self, node):
         """碰到二元運算子 (例如加減乘除)"""
         left = self.visit(node.left)
+
+        if node.op == '&&':
+            if left == 0:
+                return 0
+            else:
+                if self.visit(node.right) != 0:
+                    return 1
+                else: return 0
+        elif node.op == '||':
+            if left != 0:
+                return 1
+            else:
+                if self.visit(node.right) != 0:
+                    return 1
+                else: 
+                    return 0
+        
         right = self.visit(node.right)
         
         # 2. 根據運算子種類，執行真正的 Python 運算
@@ -211,7 +270,7 @@ class Interpreter:
 
     def visit_UnaryOpNode(self, node):
         """處理單元運算子，例如 -5, +3, !flag"""
-        value = node.operand.value
+        value = self.visit(node.operand)
         if node.op == '-':
             return -value
         elif node.op == '+':
@@ -222,7 +281,7 @@ class Interpreter:
             raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
 
     def visit_AssignNode(self, node):
-        """處理變數重新賦值，例如 a = 10; 或 a += 5;"""
+        """處理變數重新賦值，例如 a = 10; 或 arr[i] += 5;"""
 
         right_val = self.visit(node.value) # 把等號右邊的值從node裡面讀出來
 
@@ -230,8 +289,21 @@ class Interpreter:
             symbol = self.symtable.lookup(node.target.name)
             addr = symbol.address
             data_type = symbol.data_type
+        elif isinstance(node.target, ArrayIndexNode): # 看左邊這個變數是不是ArrayIndexNode
+            base_addr = self.visit(node.target.array) # 例如拿到 arr 的開頭位址
+            index = self.visit(node.target.index)     # 拿到中括號裡的數字
+            
+            # 從符號表找出這是 int 還是 char 陣列
+            symbol = self.symtable.lookup(node.target.array.name)
+            data_type = symbol.data_type
+            
+            # 算出真正的記憶體位址
+            if data_type == 'int':
+                addr = base_addr + index * 4
+            elif data_type == 'char':
+                addr = base_addr + index * 1
         else:
-            raise NotImplementedError("目前只支援對普通變數賦值，指標或陣列賦值尚未實作") # 未完成
+            raise NotImplementedError("目前只支援對普通變數，陣列賦值，指標尚未實作") # 未完成
         
         if node.op != '=': # 處理 +=, -=, *=, /=
             if data_type == 'int':
