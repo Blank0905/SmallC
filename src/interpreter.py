@@ -354,6 +354,15 @@ class Interpreter:
         """處理加上了分號的純表達式，例如 a = 10;"""
         # 直接把裡面的表達式拿出來執行即可
         return self.visit(node.expr)
+
+    def visit_IfNode(self, node):
+        """處理if-else，例如 if (x > 0) { ... } else { ... }"""
+        if self.visit(node.condition) != 0:
+            self.visit(node.then_block)
+        elif node.else_block is not None:
+            self.visit(node.else_block)
+            
+        return None
     
     def visit_ReturnNode(self, node):
         """處理 return 語句"""
@@ -363,3 +372,5 @@ class Interpreter:
             
         # 像丟球一樣，把答案丟出去，瞬間中斷後面的所有程式碼！
         raise ReturnException(value) 
+
+    
