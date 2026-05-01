@@ -5,6 +5,14 @@ class ReturnException(Exception):
     def __init__(self, value):
         self.value = value
 
+class BreakException(Exception):
+    """用來模擬 C 語言 break 中斷迴圈的機制"""
+    pass
+
+class ContinueException(Exception):
+    """用來模擬 C 語言 continue 跳過本次迴圈的機制"""
+    pass
+
 class Interpreter:
     def __init__(self, symtable, memory, builtins):
         self.symtable = symtable
@@ -371,6 +379,47 @@ class Interpreter:
             value = self.visit(node.value) # 算出 return 後面的數字
             
         # 像丟球一樣，把答案丟出去，瞬間中斷後面的所有程式碼！
-        raise ReturnException(value) 
+        raise ReturnException(value)
 
-    
+    def visit_WhileNode(self, node):
+        while self.visit(node.condition) != 0:
+            try:
+                self.visit(node.body)
+            except BreakException:
+                break
+            except ContinueException:
+                continue  # 直接跳回去重新判斷條件
+
+    def visit_DoWhileNode(self, node):
+        while True:
+            try:
+                self.visit(node.body)
+            except BreakException:
+                break
+            except ContinueException:
+                pass  # do-while 的 continue 要先檢查條件
+            if self.visit(node.condition) == 0:
+                break
+
+    def visit_ForNode(self, node):
+        if node.init is not None:
+            self.visit(node.init)
+        # node.condition 是 None 代表 for(;;) 無限迴圈
+        while node.condition is None or self.visit(node.condition) != 0:
+            try:
+                self.visit(node.body)
+            except BreakException:
+                break
+            except ContinueException:
+                pass  # for 的 continue 還是要執行 update
+            if node.update is not None:
+                self.visit(node.update)
+
+
+
+
+    def visit_BreakNode(self, node):
+        raise BreakException()
+
+    def visit_ContinueNode(self, node):
+        raise ContinueException()

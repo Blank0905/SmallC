@@ -27,6 +27,9 @@ class BuiltinManager:
             'strcat':self.builtin_strcat,
             'printf':self.builtin_printf,
 
+            #記憶體與工具函式
+            'atoi':self.builtin_atoi,
+
         }
     def is_builtin(self, name):
         """檢查某個函式名稱是否為內建函式"""
@@ -144,3 +147,20 @@ class BuiltinManager:
         sys.stdout.write(output)
         sys.stdout.flush()
         return len(output)
+
+    # ─── 記憶體與工具函數 ────────────────────────────────────────────────────────
+    def builtin_atoi(self, addr):
+        """把記憶體裡的字串讀出來，轉成整數後直接回傳整數值 (不寫回記憶體)"""
+        s = self.memory.read_string(addr)
+        try:
+            return int(s)
+        except (ValueError, TypeError):
+            return 0  # C 語言標準：無法轉換時回傳 0
+
+    def builtin_itoa(self, value, addr):
+        """整數轉字串，寫到 addr 指向的 buffer 裡，回傳 addr"""
+        s = str(value)
+        for i in range(len(s)):
+            self.memory.write_char(addr + i, ord(s[i]))  # ord() 轉成 ASCII 數值
+        self.memory.write_char(addr + len(s), '\0')  # 補 0
+        return addr
