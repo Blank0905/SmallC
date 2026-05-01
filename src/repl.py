@@ -128,9 +128,6 @@ class REPL:
         except Exception as e:
             print(f"執行期錯誤: {e}")
 
-
-
-
 # 為了方便測試，可以直接執行此檔案
 if __name__ == "__main__":
     repl = REPL()

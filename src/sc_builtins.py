@@ -73,14 +73,17 @@ class BuiltinManager:
         sys.stdout.write(chr(ch))
         sys.stdout.flush()
         return ch
+    
     def builtin_strlen(self, addr):
         s = self.memory.read_string(addr)
         length  = len(s)
         return length
+    
     def builtin_puts(self, addr):
         s = self.memory.read_string(addr)
         print(s)
         return 0
+    
     def builtin_strcpy(self,dest_addr, addr):
         s = self.memory.read_string(addr)
         l = len(s)
@@ -88,6 +91,7 @@ class BuiltinManager:
             self.memory.write_char(dest_addr + i, s[i])
         self.memory.write_char(dest_addr + l, '\0')
         return dest_addr
+    
     def builtin_strcmp(self, char1, char2):
         s1 = self.memory.read_string(char1)
         s2 = self.memory.read_string(char2)
@@ -97,6 +101,7 @@ class BuiltinManager:
             return -1
         else:
             return 1
+    
     def builtin_strcat(self, dest, src):
         source = self.memory.read_string(src)
         dest_l = self.builtin_strlen(dest)
@@ -104,6 +109,7 @@ class BuiltinManager:
             self.memory.write_char(dest + dest_l + i, source[i])
         self.memory.write_char(dest + dest_l + len(source), '\0')
         return dest
+    
     def builtin_printf(self, format_addr, *args):
         fmt = self.memory.read_string(format_addr)# 1. 把格式化字串 (例如 "Hello %s, score: %d\n") 從記憶體讀出來
         output = ""
