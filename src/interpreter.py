@@ -1,5 +1,10 @@
 from ast_node import *
 
+class ReturnException(Exception):
+    """用來模擬 C 語言 return 中斷機制的自訂例外"""
+    def __init__(self, value):
+        self.value = value
+
 class Interpreter:
     def __init__(self, symtable, memory, builtins):
         self.symtable = symtable
@@ -35,6 +40,18 @@ class Interpreter:
         result = None
         for declaration in node.declarations:
             result = self.visit(declaration)
+
+        # 全部定義都掃描完之後，看有沒有 main 函式，有的話就自動啟動！
+        try:
+            main_sym = self.symtable.lookup("main")
+            if main_sym.sym_type == 'FUNC':               
+                # 假裝我們在寫程式呼叫 main()
+                main_call = FuncCallNode("main", [], 0)
+                return self.visit_FuncCallNode(main_call)
+        except Exception as e:
+            if "not found" not in str(e).lower():
+                print(f"[*] 執行 main 時發生未預期錯誤: {e}")
+        
         return result
 
     def visit_IntLiteralNode(self, node):
@@ -122,8 +139,46 @@ class Interpreter:
             # 直接交給 BuiltinManager 去執行，並回傳它執行的結果！
             return self.builtins.call(node.name, args_values)
         else:
-            # (我們之後會在這裡處理使用者自己寫的自訂函式)
-            raise NotImplementedError(f"自訂函式 '{node.name}' 的呼叫尚未實作！")
+            func_symbol = self.symtable.lookup(node.name) # 去符號表找function名稱
+            func_node = func_symbol.func_node
+
+            # === 備份目前的區域變數狀態 ===
+            saved_locals = self.symtable.locals.copy()
+            saved_is_global = self.symtable.is_global_scope
+
+            # 進入函式前：開啟全新記憶體框架與區域變數表
+            self.memory.push_frame()
+            self.symtable.enter_function()
+
+            for param, arg_val in zip(func_node.params, args_values):
+                    param_symbol = self.symtable.define_var(
+                        name=param.name,
+                        data_type=param.type_node.base_type, # 變數的型別
+                        is_array=False
+                    )
+                    if param.type_node.base_type == 'int':
+                        self.memory.write_int(param_symbol.address, arg_val)
+                    elif param.type_node.base_type == 'char':
+                        self.memory.write_char(param_symbol.address, arg_val)
+
+            # 開始執行函式區塊
+            ret_val = 0
+            try:
+                self.visit(func_node.body)
+            except ReturnException as e: # 有return
+                # 接住 return 回來的值
+                ret_val = e.value
+                
+            # 清空記憶體與符號表
+            self.symtable.leave_function()
+            self.memory.pop_frame()
+
+            self.symtable.locals = saved_locals
+            self.symtable.is_global_scope = saved_is_global
+            
+            return ret_val
+
+
    
     def visit_AssignNode(self, node):
         """處理變數重新賦值，例如 a = 10; 或 a += 5;"""
@@ -160,3 +215,34 @@ class Interpreter:
         """處理加上了分號的純表達式，例如 a = 10;"""
         # 直接把裡面的表達式拿出來執行即可
         return self.visit(node.expr)
+
+    def visit_FuncDefNode(self, node):
+        """當直譯器看到函式定義時，不需要立刻執行，只要把它記錄到符號表裡就好"""
+
+        self.symtable.define_func(
+            name=node.name,
+            data_type=node.return_type.base_type,
+            func_node=node
+        )
+
+        return None
+
+    def visit_BlockNode(self, node):
+        """處理大括號 { ... } 裡面的程式碼區塊"""
+        
+        for stmt in node.statements: # 把裡面的每一行程式碼，每一行都會是Node，依序拿出來跑
+            self.visit(stmt)
+            
+        return None
+
+
+    #====return node====
+    
+    def visit_ReturnNode(self, node):
+        """處理 return 語句"""
+        value = 0
+        if node.value is not None:
+            value = self.visit(node.value) # 算出 return 後面的數字
+            
+        # 像丟球一樣，把答案丟出去，瞬間中斷後面的所有程式碼！
+        raise ReturnException(value) 
