@@ -255,6 +255,20 @@ class Interpreter:
             if right == 0:
                 raise RuntimeError("Runtime Error: Division by zero")
             return left // right   # C語言的整數除法是無條件捨去，所以用 //
+        elif node.op == '%':
+            if right == 0:
+                raise RuntimeError("Runtime Error: Modulo by zero")
+            return left % right
+        elif node.op == '&':
+            return left & right
+        elif node.op == '|':
+            return left | right
+        elif node.op == '^':
+            return left ^ right
+        elif node.op == '<<':
+            return left << right
+        elif node.op == '>>':
+            return left >> right
         elif node.op == '>':
             return 1 if left > right else 0
         elif node.op == '<':
@@ -277,6 +291,8 @@ class Interpreter:
             return value
         elif node.op == '!':
             return 1 if value == 0 else 0
+        elif node.op == '~':
+            return ~value
         else:
             raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
 
