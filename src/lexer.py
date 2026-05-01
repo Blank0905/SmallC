@@ -51,7 +51,7 @@ class Lexer:
             return None
         return self.text[next_pos]
 
-    def tokenize(self):
+    def tokenize(self):#給其他東西進來的進入點
         """回傳所有 Token 的列表，直到 EOF"""
         tokens = []
         while True:

@@ -1,7 +1,7 @@
 from lexer import Lexer, Token
-from parser import Parser
+from sc_parser import Parser
 from ast_node import *
-
+from repl import REPL 
 
 def simple_print(node, depth=0):
     if node is None: return
@@ -22,13 +22,8 @@ def simple_print(node, depth=0):
             else:
                 print(f"{indent}  {key}: {value}")
 def main():
-    lexer = Lexer("int x = 5; int main() { return x; }")
-    tokens = lexer.tokenize()
-    parser = Parser(tokens)
-    ast_root = parser.parse()
-    
-    print("\n--- AST ---")
-    simple_print(ast_root)
+    interpreter_repl = REPL()
+    interpreter_repl.start()
 
 if __name__ == "__main__":
     main()

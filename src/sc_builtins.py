@@ -23,6 +23,9 @@ class BuiltinManager:
             'strlen':self.builtin_strlen,
             'puts':self.builtin_puts,
             'strcpy':self.builtin_strcpy,
+            'strcmp':self.builtin_strcmp,
+            'strcat':self.builtin_strcat,
+            'printf':self.builtin_printf,
 
         }
     def is_builtin(self, name):
@@ -85,5 +88,53 @@ class BuiltinManager:
             self.memory.write_char(dest_addr + i, s[i])
         self.memory.write_char(dest_addr + l, '\0')
         return dest_addr
-
-
+    def builtin_strcmp(self, char1, char2):
+        s1 = self.memory.read_string(char1)
+        s2 = self.memory.read_string(char2)
+        if s1 == s2:
+            return 0
+        elif s1 < s2:
+            return -1
+        else:
+            return 1
+    def builtin_strcat(self, dest, src):
+        source = self.memory.read_string(src)
+        dest_l = self.builtin_strlen(dest)
+        for i in range(len(source)):
+            self.memory.write_char(dest + dest_l + i, source[i])
+        self.memory.write_char(dest + dest_l + len(source), '\0')
+        return dest
+    def builtin_printf(self, format_addr, *args):
+        fmt = self.memory.read_string(format_addr)# 1. 把格式化字串 (例如 "Hello %s, score: %d\n") 從記憶體讀出來
+        output = ""
+        pos = 0
+        arg_idx = 0
+        while pos < len(fmt):
+            if fmt[pos] == '%' and pos + 1 < len(fmt):
+                specifier = fmt[pos+1]
+                if specifier == '%':
+                    output += '%'
+                else:
+                    if arg_idx >= len(args):
+                        raise RuntimeError("Runtime Error: printf arguments not enough")
+                    val = args[arg_idx]
+                    arg_idx += 1
+                    
+                    if specifier == 'd':
+                        output += str(val)
+                    elif specifier == 'c':
+                        output += chr(val)
+                    elif specifier == 's':
+                        output += self.memory.read_string(val)
+                    elif specifier == 'x':
+                        output += hex(val)[2:] # 把 Python 的 '0x...' 去掉 0x
+                    else:
+                        output += '%' + specifier # 遇到不認識的，就原樣印出
+                pos += 2
+            else:
+                output += fmt[pos]
+                pos += 1
+        # 組合好整個字串後，一口氣印在終端機上
+        sys.stdout.write(output)
+        sys.stdout.flush()
+        return len(output)
