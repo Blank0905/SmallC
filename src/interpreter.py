@@ -54,78 +54,6 @@ class Interpreter:
         
         return result
 
-    def visit_IntLiteralNode(self, node):
-        """碰到純數字，執行結果就是數字本身"""
-        return node.value
-
-    def visit_BinOpNode(self, node):
-        """碰到二元運算子 (例如加減乘除)"""
-        left = self.visit(node.left)
-        right = self.visit(node.right)
-        
-        # 2. 根據運算子種類，執行真正的 Python 運算
-        # （把 node.op.type 改成直接比對 node.op 字串）
-        if node.op == '+':
-            return left + right
-        elif node.op == '-':
-            return left - right
-        elif node.op == '*':
-            return left * right
-        elif node.op == '/':
-            if right == 0:
-                raise RuntimeError("Runtime Error: Division by zero")
-            return left // right   # C語言的整數除法是無條件捨去，所以用 //
-
-    def visit_VarDeclNode(self, node):
-        """處理變數宣告，例如: int x = 1 + 2 * 3;"""
-        data_type = node.type_node.base_type # 拿出他的型別
-
-        symbol = self.symtable.define_var(name=node.name, data_type=data_type, is_array=(node.array_size is not None)) # 去符號表註冊此變數，symbol會是一個Symbol物件
-
-        # 如果宣告時有給初始值 (init_expr)
-        if node.init_expr is not None:
-            value = self.visit(node.init_expr) # 這邊會拿到等號右邊的值
-
-            if data_type == 'int': #根據變數宣告的型別來寫入值
-                self.memory.write_int(symbol.address, value)
-            elif data_type == 'char':
-                self.memory.write_char(symbol.address, value)
-        return None
-
-    def visit_VarNode(self, node):
-        """碰到變數名稱，例如程式碼裡的 `x + 5` 的 `x`，就要去記憶體把它的值拿出來"""
-        
-        # 1. 去符號表查這個變數放在哪裡
-        symbol = self.symtable.lookup(node.name)
-        
-        # 2. 去記憶體的那個位址，把數字讀出來並回傳
-        if symbol.data_type == 'int':
-            return self.memory.read_int(symbol.address)
-        elif symbol.data_type == 'char':
-            return self.memory.read_char(symbol.address)
-        else:
-            # 如果是指標或陣列，我們通常是需要它的位址，而不是裡面的值
-            return symbol.address
-    
-    def visit_StringLiteralNode(self, node):
-        """碰到字串字面量 (例如 "Hello")，實作字串池 (String Pooling) 避免記憶體浪費"""
-        
-        # 檢查字串池，如果這個字串以前存過了，直接回傳舊位址！
-        if node.value in self.string_pool:
-            return self.string_pool[node.value]
-            
-        # 如果是第一次遇到，再去做配置與寫入
-        s_bytes = node.value.encode('utf-8')
-        addr = self.memory.alloc_global(len(s_bytes) + 1)
-        
-        for i, byte_val in enumerate(s_bytes):
-            self.memory.write_char(addr + i, byte_val)
-        self.memory.write_char(addr + len(s_bytes), 0)
-        
-        # 存好之後，把它記錄到字串池裡
-        self.string_pool[node.value] = addr
-        return addr
-
     def visit_FuncCallNode(self, node):
         """處理函式呼叫，例如 printf("Hello %d", a);"""
         
@@ -178,8 +106,121 @@ class Interpreter:
             
             return ret_val
 
+    # ─── 字面量（Literals） ────────────────────────────────────────────────────────
 
-   
+    def visit_IntLiteralNode(self, node):
+        """碰到純數字，執行結果就是數字本身"""
+        return node.value
+    
+    def visit_StringLiteralNode(self, node):
+        """碰到字串字面量 (例如 "Hello")，實作字串池 (String Pooling) 避免記憶體浪費"""
+        
+        # 檢查字串池，如果這個字串以前存過了，直接回傳舊位址！
+        if node.value in self.string_pool:
+            return self.string_pool[node.value]
+            
+        # 如果是第一次遇到，再去做配置與寫入
+        s_bytes = node.value.encode('utf-8')
+        addr = self.memory.alloc_global(len(s_bytes) + 1)
+        
+        for i, byte_val in enumerate(s_bytes):
+            self.memory.write_char(addr + i, byte_val)
+        self.memory.write_char(addr + len(s_bytes), 0)
+        
+        # 存好之後，把它記錄到字串池裡
+        self.string_pool[node.value] = addr
+        return addr
+
+    # ─── 變數與型別 ────────────────────────────────────────────────────────────────
+
+    def visit_VarNode(self, node):
+        """碰到變數名稱，例如程式碼裡的 `x + 5` 的 `x`，就要去記憶體把它的值拿出來"""
+        
+        # 1. 去符號表查這個變數放在哪裡
+        symbol = self.symtable.lookup(node.name)
+        
+        # 2. 去記憶體的那個位址，把數字讀出來並回傳
+        if symbol.data_type == 'int':
+            return self.memory.read_int(symbol.address)
+        elif symbol.data_type == 'char':
+            return self.memory.read_char(symbol.address)
+        else:
+            # 如果是指標或陣列，我們通常是需要它的位址，而不是裡面的值
+            return symbol.address
+
+    # ─── 宣告（Declarations） ─────────────────────────────────────────────────────
+
+    def visit_VarDeclNode(self, node):
+        """處理變數宣告，例如: int x = 1 + 2 * 3;"""
+        data_type = node.type_node.base_type # 拿出他的型別
+
+        symbol = self.symtable.define_var(name=node.name, data_type=data_type, is_array=(node.array_size is not None)) # 去符號表註冊此變數，symbol會是一個Symbol物件
+
+        # 如果宣告時有給初始值 (init_expr)
+        if node.init_expr is not None:
+            value = self.visit(node.init_expr) # 這邊會拿到等號右邊的值
+
+            if data_type == 'int': #根據變數宣告的型別來寫入值
+                self.memory.write_int(symbol.address, value)
+            elif data_type == 'char':
+                self.memory.write_char(symbol.address, value)
+        return None
+
+    def visit_FuncDefNode(self, node):
+        """當直譯器看到函式定義時，不需要立刻執行，只要把它記錄到符號表裡就好"""
+
+        self.symtable.define_func(
+            name=node.name,
+            data_type=node.return_type.base_type,
+            func_node=node
+        )
+
+        return None
+
+    # ─── 運算式（Expressions） ────────────────────────────────────────────────────
+
+    def visit_BinOpNode(self, node):
+        """碰到二元運算子 (例如加減乘除)"""
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        
+        # 2. 根據運算子種類，執行真正的 Python 運算
+        # （把 node.op.type 改成直接比對 node.op 字串）
+        if node.op == '+':
+            return left + right
+        elif node.op == '-':
+            return left - right
+        elif node.op == '*':
+            return left * right
+        elif node.op == '/':
+            if right == 0:
+                raise RuntimeError("Runtime Error: Division by zero")
+            return left // right   # C語言的整數除法是無條件捨去，所以用 //
+        elif node.op == '>':
+            return 1 if left > right else 0
+        elif node.op == '<':
+            return 1 if left < right else 0
+        elif node.op == '>=':
+            return 1 if left >= right else 0
+        elif node.op == '<=':
+            return 1 if left <= right else 0
+        elif node.op == '==':
+            return 1 if left == right else 0
+        elif node.op == '!=':
+            return 1 if left != right else 0
+
+    def visit_UnaryOpNode(self, node):
+        """處理單元運算子，例如 -5, +3, !flag"""
+        value = node.operand.value
+        if node.op == '-':
+            return -value
+        elif node.op == '+':
+            return value
+        elif node.op == '!':
+            return 1 if value == 0 else 0
+        else:
+            raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
+
     def visit_AssignNode(self, node):
         """處理變數重新賦值，例如 a = 10; 或 a += 5;"""
 
@@ -211,21 +252,7 @@ class Interpreter:
 
         return right_val
 
-    def visit_ExprStmtNode(self, node): # 應該是回傳整個式子
-        """處理加上了分號的純表達式，例如 a = 10;"""
-        # 直接把裡面的表達式拿出來執行即可
-        return self.visit(node.expr)
-
-    def visit_FuncDefNode(self, node):
-        """當直譯器看到函式定義時，不需要立刻執行，只要把它記錄到符號表裡就好"""
-
-        self.symtable.define_func(
-            name=node.name,
-            data_type=node.return_type.base_type,
-            func_node=node
-        )
-
-        return None
+    # ─── 語句（Statements） ────────────────────────────────────────────────────────
 
     def visit_BlockNode(self, node):
         """處理大括號 { ... } 裡面的程式碼區塊"""
@@ -235,8 +262,10 @@ class Interpreter:
             
         return None
 
-
-    #====return node====
+    def visit_ExprStmtNode(self, node): # 應該是回傳整個式子
+        """處理加上了分號的純表達式，例如 a = 10;"""
+        # 直接把裡面的表達式拿出來執行即可
+        return self.visit(node.expr)
     
     def visit_ReturnNode(self, node):
         """處理 return 語句"""

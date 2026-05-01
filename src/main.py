@@ -22,8 +22,8 @@ def simple_print(node, depth=0):
             else:
                 print(f"{indent}  {key}: {value}")
 def main():
-    interpreter_repl = REPL()
-    interpreter_repl.start()
+    repl = REPL()
+    repl.start()
 
 if __name__ == "__main__":
     main()

@@ -57,6 +57,8 @@ class REPL:
                 self.cmd_new()
             elif command == 'RUN':
                 self.cmd_run()
+            elif command == 'CLEAR':
+                self.cmd_clear()
             # 判斷是否為其他預留指令 (防止被當成 C 程式碼)
             elif command in ('SAVE', 'EDIT', 'DELETE', 'INSERT', 'APPEND', 'RUN', 'CHECK', 'TRACE', 'VARS', 'FUNCS', 'ABOUT', 'CLEAR'):
                 print(f"指令 {command} 尚未實作！")
@@ -128,7 +130,11 @@ class REPL:
         except Exception as e:
             print(f"執行期錯誤: {e}")
 
-# 為了方便測試，可以直接執行此檔案
-if __name__ == "__main__":
-    repl = REPL()
-    repl.start()
+    def cmd_clear(self):
+        self.code_buffer = []
+        return
+
+# # 為了方便測試，可以直接執行此檔案
+# if __name__ == "__main__":
+#     repl = REPL()
+#     repl.start()
