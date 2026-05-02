@@ -360,6 +360,10 @@ class Lexer:
             if self.current_char == '.':
                 self.advance()
                 return Token('DOT', '.', self.line)
+            
+            if self.current_char == '#':
+                self.advance()
+                return Token('HASH', '#', self.line)
 
             # 如果遇到無法辨識的字元，報錯
             raise Exception(f'Lexer Error: Unknown character {self.current_char} at line {self.line}')
