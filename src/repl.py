@@ -65,6 +65,8 @@ class REPL:
                 self.cmd_list(args)
             elif command == 'LOAD':
                 self.cmd_load(args)
+            elif command == 'SAVE':
+                self.cmd_save(args)
             elif command == 'NEW':
                 self.cmd_new()
             elif command == 'RUN':
@@ -118,6 +120,19 @@ class REPL:
         except Exception as e:
             print(f"Error loading file: {e}")
 
+    def cmd_save(self, args):
+        """從緩衝區存代碼成檔案"""
+        if not args:
+            print("Error: Missing filename. Usage: SAVE <filename>")
+            return
+        try:
+            with open(args, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(self.code_buffer) + '\n')
+            self.is_dirty = False
+            print(f"Saved {len(self.code_buffer)} lines to {args}")
+        except Exception as e:
+            print(f"Error saving file: {e}")
+
     def cmd_quit(self):
         """離開 REPL，如果有未儲存的修改需警告"""
         if self.is_dirty:
@@ -128,21 +143,28 @@ class REPL:
 
     def cmd_run(self):
         source_code = '\n'.join(self.code_buffer) # 把 buffer 裡的每一項，用換行符號連接成一個大字串
-        lexer = Lexer(source_code)
-        tokens = lexer.tokenize()
-        parser_obj = Parser(tokens)
-        nodes = parser_obj.parse()
+        
+        try:
+            lexer = Lexer(source_code)
+            tokens = lexer.tokenize()
+            parser_obj = Parser(tokens)
+            nodes = parser_obj.parse()
+        except SyntaxError as e:
+            print(f"[!] 語法錯誤: {e}")
+            return
+        except Exception as e:
+            print(f"[!] 解析錯誤: {e}")
+            return
 
         mem = Memory() # 建立新的記憶體環境
         sym = SymbolTable(mem)
         builtins_mgr = BuiltinManager(mem)
 
-
         interpreter = Interpreter(symtable=sym, memory=mem, builtins=builtins_mgr)
         try:
             interpreter.visit(nodes)
         except Exception as e:
-            print(f"執行期錯誤: {e}")
+            print(f"[*] 執行 main 時發生未預期錯誤: {e}")
 
     def cmd_clear(self):
         self.code_buffer = []

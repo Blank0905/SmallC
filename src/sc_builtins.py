@@ -139,7 +139,7 @@ class BuiltinManager:
         return int(base ** exp) #強轉成整數型別
     def builtin_sqrt(self, x):
         if x < 0 :
-            raise RuntimeError("Runtime Error: sqrt of negative number")
+            raise RuntimeError("Runtime Error: sqrt() argument must be non-negative.")
         return math.isqrt(x)
     def builtin_mod (self, a, b):
         if b == 0:

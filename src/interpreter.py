@@ -176,6 +176,10 @@ class Interpreter:
         # 找出陣列元素的型別 (要知道是 int 還是 char，才能決定讀幾個 bytes)
         symbol = self.symtable.lookup(node.array.name)
         data_type = symbol.data_type
+
+        # 邊界檢查
+        if symbol.is_array and (index < 0 or index >= symbol.array_len):
+            raise RuntimeError(f"Runtime Error: array index out of bounds. (index {index}, size {symbol.array_len})")
             
         # 根據型別，計算實際記憶體位置並讀取
         if data_type == 'int':
@@ -357,6 +361,10 @@ class Interpreter:
             # 從符號表找出這是 int 還是 char 陣列
             symbol = self.symtable.lookup(node.target.array.name)
             data_type = symbol.data_type
+
+            # 邊界檢查
+            if symbol.is_array and (index < 0 or index >= symbol.array_len):
+                raise RuntimeError(f"Runtime Error: array index out of bounds (index {index}, size {symbol.array_len})")
             
             # 算出真正的記憶體位址
             if data_type == 'int':
