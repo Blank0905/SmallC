@@ -161,8 +161,8 @@ class Interpreter:
         elif symbol.data_type == 'char':
             return self.memory.read_char(symbol.address)
         else:
-            # 如果是指標，通常也是需要它的位址
-            return symbol.address
+            # 指標變數：裡面存的是位址，用 read_int 讀出來
+            return self.memory.read_int(symbol.address)
 
     def visit_ArrayIndexNode(self, node):
         """處理陣列讀取，例如: arr[i]"""
@@ -191,6 +191,11 @@ class Interpreter:
     def visit_VarDeclNode(self, node):
         """處理變數宣告，例如: int x = 1 + 2 * 3; 或 int arr[10];"""
         data_type = node.type_node.base_type # 拿出他的型別
+        pointer_type = node.type_node.pointer_depth # 拿出他指標的型別 0=普通, 1=指標(*), 2=雙指標(**)
+        if pointer_type == 1:
+            data_type = data_type + '*'
+        elif pointer_type == 2:
+            data_type = data_type + '**'
 
         # 如果是陣列，要先算出陣列長度
         is_array = (node.array_size is not None)
@@ -291,8 +296,27 @@ class Interpreter:
             return 1 if left != right else 0
 
     def visit_UnaryOpNode(self, node):
-        """處理單元運算子，例如 -5, +3, !flag"""
+        """處理單元運算子，例如 -5, +3, !flag, &x, *ptr"""
+        
+        # &x 取址：不能先算 operand 的值，要直接查符號表拿位址
+        if node.op == '&':
+            if isinstance(node.operand, VarNode): # 先檢查是否是VarNode
+                symbol = self.symtable.lookup(node.operand.name)
+                return symbol.address
+            elif isinstance(node.operand, ArrayIndexNode):
+                base_addr = self.visit(node.operand.array)
+                index = self.visit(node.operand.index)
+                symbol = self.symtable.lookup(node.operand.array.name)
+                if symbol.data_type == 'int':
+                    return base_addr + index * 4
+                else:
+                    return base_addr + index * 1
+            else:
+                raise RuntimeError("Runtime Error: Cannot take address of non-lvalue")
+
+        # 其他運算子都需要先算出 operand 的值
         value = self.visit(node.operand)
+
         if node.op == '-':
             return -value
         elif node.op == '+':
@@ -301,6 +325,14 @@ class Interpreter:
             return 1 if value == 0 else 0
         elif node.op == '~':
             return ~value
+        elif node.op == '*':
+            addr = value  # operand 算出來就是記憶體位址
+            # 判斷要讀 int 還是 char
+            if isinstance(node.operand, VarNode):
+                symbol = self.symtable.lookup(node.operand.name)
+                if symbol.data_type == 'char*':
+                    return self.memory.read_char(addr)
+            return self.memory.read_int(addr)  # 預設讀 int
         else:
             raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
 
@@ -326,8 +358,16 @@ class Interpreter:
                 addr = base_addr + index * 4
             elif data_type == 'char':
                 addr = base_addr + index * 1
+        elif isinstance(node.target, UnaryOpNode) and node.target.op == '*':  # *ptr = 99;
+            addr = self.visit(node.target.operand)  # 算出 ptr 裡面存的位址
+            # 判斷要寫 int 還是 char
+            data_type = 'int*'
+            if isinstance(node.target.operand, VarNode):
+                symbol = self.symtable.lookup(node.target.operand.name)
+                data_type = symbol.data_type
+        
         else:
-            raise NotImplementedError("目前只支援對普通變數，陣列賦值，指標尚未實作") # 未完成
+            raise NotImplementedError("目前只支援對普通變數、陣列與指標賦值")
         
         if node.op != '=': # 處理 +=, -=, *=, /=
             if data_type == 'int':
@@ -345,6 +385,8 @@ class Interpreter:
             self.memory.write_int(addr, right_val)
         elif data_type =='char':
             self.memory.write_char(addr, right_val)
+        elif data_type in ('int*', 'char*'):  # 指標本質上就是 4-byte 整數（存位址）
+            self.memory.write_int(addr, right_val)
 
         return right_val
 
