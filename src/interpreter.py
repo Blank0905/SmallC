@@ -19,6 +19,7 @@ class Interpreter:
         self.memory = memory
         self.builtins = builtins
         self.string_pool = {}
+        self.in_block_scope = False  # 追蹤是否在 if/while/for 區塊內
 
     def visit(self, node):
         """
@@ -190,6 +191,10 @@ class Interpreter:
 
     def visit_VarDeclNode(self, node):
         """處理變數宣告，例如: int x = 1 + 2 * 3; 或 int arr[10];"""
+        # Small-C 不允許在 if/while/for 區塊內宣告變數
+        if self.in_block_scope:
+            raise RuntimeError(f"Semantic Error: Small-C 不支援在控制流區塊內宣告變數 '{node.name}'，請將宣告移至函式開頭")
+
         data_type = node.type_node.base_type # 拿出他的型別
         pointer_type = node.type_node.pointer_depth # 拿出他指標的型別 0=普通, 1=指標(*), 2=雙指標(**)
         if pointer_type == 1:
@@ -407,11 +412,13 @@ class Interpreter:
 
     def visit_IfNode(self, node):
         """處理if-else，例如 if (x > 0) { ... } else { ... }"""
+        old_flag = self.in_block_scope
+        self.in_block_scope = True
         if self.visit(node.condition) != 0:
             self.visit(node.then_block)
         elif node.else_block is not None:
             self.visit(node.else_block)
-            
+        self.in_block_scope = old_flag
         return None
     
     def visit_ReturnNode(self, node):
@@ -424,6 +431,8 @@ class Interpreter:
         raise ReturnException(value)
 
     def visit_WhileNode(self, node):
+        old_flag = self.in_block_scope
+        self.in_block_scope = True
         while self.visit(node.condition) != 0:
             try:
                 self.visit(node.body)
@@ -431,31 +440,37 @@ class Interpreter:
                 break
             except ContinueException:
                 continue  # 直接跳回去重新判斷條件
+        self.in_block_scope = old_flag
 
     def visit_DoWhileNode(self, node):
+        old_flag = self.in_block_scope
+        self.in_block_scope = True
         while True:
             try:
                 self.visit(node.body)
             except BreakException:
                 break
             except ContinueException:
-                pass  # do-while 的 continue 要先檢查條件
+                pass
             if self.visit(node.condition) == 0:
                 break
+        self.in_block_scope = old_flag
 
     def visit_ForNode(self, node):
         if node.init is not None:
             self.visit(node.init)
-        # node.condition 是 None 代表 for(;;) 無限迴圈
+        old_flag = self.in_block_scope
+        self.in_block_scope = True
         while node.condition is None or self.visit(node.condition) != 0:
             try:
                 self.visit(node.body)
             except BreakException:
                 break
             except ContinueException:
-                pass  # for 的 continue 還是要執行 update
+                pass
             if node.update is not None:
                 self.visit(node.update)
+        self.in_block_scope = old_flag
 
 
 
