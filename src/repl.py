@@ -276,10 +276,18 @@ class REPL:
             print(f"Appended {count} line(s).")
 
     def cmd_new(self):
-        """清空緩衝區"""
+        """清空緩衝區並重置所有執行狀態"""
+        if self.is_dirty:
+            ans = input("Buffer has unsaved changes. Really clear? (y/N): ")
+            if ans.lower() != 'y':
+                return
+        # 清空緩衝區並重置所有執行狀態
         self.code_buffer.clear()
         self.is_dirty = False
-        print("Buffer cleared.")
+        self.last_sym = None
+        self.last_mem = None
+        self.last_builtins = None
+        print("Buffer cleared and execution state reset.")
 
     # ───執行與除錯指令 ─────────────────────────────────────────────────────
 

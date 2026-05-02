@@ -1,7 +1,7 @@
 import re
 
 
-DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_]\w*)(.*)$', re.IGNORECASE)
+DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_]\w*)(.*)$', re.IGNORECASE) # 用來適配#DEFINE的regex
 IDENT_RE = re.compile(r'\b[A-Za-z_]\w*\b')
 
 
