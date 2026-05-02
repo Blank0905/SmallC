@@ -40,6 +40,22 @@ class Interpreter:
     def generic_visit(self, node):
         raise Exception(f"Interpreter Error: 找不到處理 {type(node).__name__} 的方法！")
 
+    def _type_name(self, type_node):
+        return type_node.base_type + ("*" * type_node.pointer_depth)
+
+    def _array_element_type(self, symbol):
+        if symbol.data_type.endswith('*'):
+            return symbol.data_type[:-1]
+        return symbol.data_type
+
+    def _visit_control_body(self, node):
+        old_flag = self.in_block_scope
+        self.in_block_scope = True
+        try:
+            return self.visit(node)
+        finally:
+            self.in_block_scope = old_flag
+
     # ==========================================
     # 執行各個 AST 節點的具體邏輯
     # ==========================================
@@ -88,30 +104,36 @@ class Interpreter:
             self.symtable.enter_function()
 
             for param, arg_val in zip(func_node.params, args_values):
-                    param_symbol = self.symtable.define_var(
-                        name=param.name,
-                        data_type=param.type_node.base_type, # 變數的型別
-                        is_array=False
-                    )
-                    if param.type_node.base_type == 'int':
-                        self.memory.write_int(param_symbol.address, arg_val)
-                    elif param.type_node.base_type == 'char':
-                        self.memory.write_char(param_symbol.address, arg_val)
+                data_type = self._type_name(param.type_node)
+                param_symbol = self.symtable.define_var(
+                    name=param.name,
+                    data_type=data_type, # 變數的型別
+                    is_array=False
+                )
+                if data_type == 'char':
+                    self.memory.write_char(param_symbol.address, arg_val)
+                else:
+                    self.memory.write_int(param_symbol.address, arg_val)
 
             # 開始執行函式區塊
             ret_val = 0
+            old_block_flag = self.in_block_scope
+            self.in_block_scope = False  # 進入新函式，重置區塊旗標以允許開頭宣告
             try:
-                self.visit(func_node.body)
-            except ReturnException as e: # 有return
-                # 接住 return 回來的值
-                ret_val = e.value
-                
-            # 清空記憶體與符號表
-            self.symtable.leave_function()
-            self.memory.pop_frame()
+                try:
+                    self.visit(func_node.body)
+                except ReturnException as e: # 有return
+                    # 接住 return 回來的值
+                    ret_val = e.value
+            finally:
+                self.in_block_scope = old_block_flag # 恢復原本的旗標狀態
+                    
+                # 清空記憶體與符號表
+                self.symtable.leave_function()
+                self.memory.pop_frame()
 
-            self.symtable.locals = saved_locals
-            self.symtable.is_global_scope = saved_is_global
+                self.symtable.locals = saved_locals
+                self.symtable.is_global_scope = saved_is_global
             
             return ret_val
 
@@ -175,7 +197,7 @@ class Interpreter:
         
         # 找出陣列元素的型別 (要知道是 int 還是 char，才能決定讀幾個 bytes)
         symbol = self.symtable.lookup(node.array.name)
-        data_type = symbol.data_type
+        data_type = self._array_element_type(symbol)
 
         # 邊界檢查
         if symbol.is_array and (index < 0 or index >= symbol.array_len):
@@ -199,12 +221,7 @@ class Interpreter:
         if self.in_block_scope:
             raise RuntimeError(f"Semantic Error: Small-C 不支援在控制流區塊內宣告變數 '{node.name}'，請將宣告移至函式開頭")
 
-        data_type = node.type_node.base_type # 拿出他的型別
-        pointer_type = node.type_node.pointer_depth # 拿出他指標的型別 0=普通, 1=指標(*), 2=雙指標(**)
-        if pointer_type == 1:
-            data_type = data_type + '*'
-        elif pointer_type == 2:
-            data_type = data_type + '**'
+        data_type = self._type_name(node.type_node) # 拿出他的型別
 
         # 如果是陣列，要先算出陣列長度
         is_array = (node.array_size is not None)
@@ -316,7 +333,8 @@ class Interpreter:
                 base_addr = self.visit(node.operand.array)
                 index = self.visit(node.operand.index)
                 symbol = self.symtable.lookup(node.operand.array.name)
-                if symbol.data_type == 'int':
+                data_type = self._array_element_type(symbol)
+                if data_type == 'int':
                     return base_addr + index * 4
                 else:
                     return base_addr + index * 1
@@ -360,7 +378,7 @@ class Interpreter:
             
             # 從符號表找出這是 int 還是 char 陣列
             symbol = self.symtable.lookup(node.target.array.name)
-            data_type = symbol.data_type
+            data_type = self._array_element_type(symbol)
 
             # 邊界檢查
             if symbol.is_array and (index < 0 or index >= symbol.array_len):
@@ -374,10 +392,10 @@ class Interpreter:
         elif isinstance(node.target, UnaryOpNode) and node.target.op == '*':  # *ptr = 99;
             addr = self.visit(node.target.operand)  # 算出 ptr 裡面存的位址
             # 判斷要寫 int 還是 char
-            data_type = 'int*'
+            data_type = 'int'
             if isinstance(node.target.operand, VarNode):
                 symbol = self.symtable.lookup(node.target.operand.name)
-                data_type = symbol.data_type
+                data_type = symbol.data_type[:-1] if symbol.data_type.endswith('*') else symbol.data_type
         
         else:
             raise NotImplementedError("目前只支援對普通變數、陣列與指標賦值")
@@ -420,13 +438,10 @@ class Interpreter:
 
     def visit_IfNode(self, node):
         """處理if-else，例如 if (x > 0) { ... } else { ... }"""
-        old_flag = self.in_block_scope
-        self.in_block_scope = True
         if self.visit(node.condition) != 0:
-            self.visit(node.then_block)
+            self._visit_control_body(node.then_block)
         elif node.else_block is not None:
-            self.visit(node.else_block)
-        self.in_block_scope = old_flag
+            self._visit_control_body(node.else_block)
         return None
     
     def visit_ReturnNode(self, node):
@@ -439,46 +454,37 @@ class Interpreter:
         raise ReturnException(value)
 
     def visit_WhileNode(self, node):
-        old_flag = self.in_block_scope
-        self.in_block_scope = True
         while self.visit(node.condition) != 0:
             try:
-                self.visit(node.body)
+                self._visit_control_body(node.body)
             except BreakException:
                 break
             except ContinueException:
                 continue  # 直接跳回去重新判斷條件
-        self.in_block_scope = old_flag
 
     def visit_DoWhileNode(self, node):
-        old_flag = self.in_block_scope
-        self.in_block_scope = True
         while True:
             try:
-                self.visit(node.body)
+                self._visit_control_body(node.body)
             except BreakException:
                 break
             except ContinueException:
                 pass
             if self.visit(node.condition) == 0:
                 break
-        self.in_block_scope = old_flag
 
     def visit_ForNode(self, node):
         if node.init is not None:
             self.visit(node.init)
-        old_flag = self.in_block_scope
-        self.in_block_scope = True
         while node.condition is None or self.visit(node.condition) != 0:
             try:
-                self.visit(node.body)
+                self._visit_control_body(node.body)
             except BreakException:
                 break
             except ContinueException:
                 pass
             if node.update is not None:
                 self.visit(node.update)
-        self.in_block_scope = old_flag
 
 
 

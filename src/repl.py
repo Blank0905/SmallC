@@ -15,6 +15,10 @@ class REPL:
         # 紀錄緩衝區是否被修改過（用來在 QUIT 時警告使用者）
         self.is_dirty = False
 
+        self.last_sym = None       # 上次執行的符號表
+        self.last_mem = None       # 上次執行的記憶體
+        self.last_builtins = None  # 上次執行的內建函式管理器
+
     def start(self):
         """啟動互動式介面"""
         banner = r"""
@@ -67,45 +71,37 @@ class REPL:
                 self.cmd_load(args)
             elif command == 'SAVE':
                 self.cmd_save(args)
+            elif command == 'DELETE':
+                self.cmd_delete(args)
+            elif command == 'INSERT':
+                self.cmd_insert(args)
+            elif command == 'APPEND':
+                self.cmd_append()
+            elif command == 'VARS':
+                self.cmd_vars()
+            elif command == 'FUNCS':
+                self.cmd_funcs()
             elif command == 'NEW':
                 self.cmd_new()
             elif command == 'RUN':
                 self.cmd_run()
+            elif command == 'CHECK':
+                self.cmd_check()
             elif command == 'CLEAR':
                 self.cmd_clear()
             elif command == 'ABOUT':
                 self.cmd_about()
+            elif command == 'EDIT':
+                self.cmd_edit(args)
             # 判斷是否為其他預留指令 (防止被當成 C 程式碼)
-            elif command in ('SAVE', 'EDIT', 'DELETE', 'INSERT', 'APPEND', 'CHECK', 'TRACE', 'VARS', 'FUNCS'):
+            elif command in ('TRACE', 'VARS', 'FUNCS'):
                 print(f"指令 {command} 尚未實作！")
             else:
                 # 作業規定：如果不是任何已知指令，就視為 Small-C 程式碼，直接加入緩衝區！
                 self.code_buffer.append(line)
-                self.is_dirty = True # 標記為已修改
+                self.is_dirty = True # 標記為已修改  
 
-    # ==========================================
-    # 指令實作區
-    # ==========================================
-    
-    def cmd_help(self, args):
-        print("可用指令：LOAD, SAVE, LIST, EDIT, DELETE, INSERT, APPEND, NEW, RUN, CHECK, TRACE, VARS, FUNCS, HELP, ABOUT, CLEAR, QUIT")
-
-    def cmd_new(self):
-        """清空緩衝區"""
-        self.code_buffer.clear()
-        self.is_dirty = False
-        print("Buffer cleared.")
-
-    def cmd_list(self, args):
-        """列出緩衝區的程式碼 (先實作最基本的全部列出)"""
-        if not self.code_buffer:
-            print("Buffer is empty.")
-            return
-        
-        # 顯示每一行，並標上行號 (1-indexed)
-        for i, code_line in enumerate(self.code_buffer):
-            print(f"{i + 1:3d} | {code_line}")
-
+    # ─── 程式管理指令 ─────────────────────────────────────────────────────
     def cmd_load(self, args):
         """從檔案載入程式碼到緩衝區"""
         if not args:
@@ -133,13 +129,109 @@ class REPL:
         except Exception as e:
             print(f"Error saving file: {e}")
 
-    def cmd_quit(self):
-        """離開 REPL，如果有未儲存的修改需警告"""
-        if self.is_dirty:
-            ans = input("Buffer has unsaved changes. Really quit? (y/N): ")
-            if ans.lower() != 'y':
-                return False # 取消離開
-        return True # 確認離開
+    def cmd_list(self, args):
+        """列出緩衝區的程式碼 (先實作最基本的全部列出)"""
+        if not self.code_buffer:
+            print("Buffer is empty.")
+            return
+
+        if args and '-' in args:          # LIST 3-7
+            parts = args.split('-')
+            start, end = int(parts[0]), int(parts[1])
+        elif args and args.isdigit():
+            start = end = int(args)
+        else:
+            start = 1
+            end = len(self.code_buffer)
+
+        for i in range(start - 1, min(end, len(self.code_buffer))):
+            print(f"{i + 1:3d} | {self.code_buffer[i]}")
+
+    def cmd_edit(self, args):
+        """EDIT <n>：將第 n 行顯示給使用者，輸入新內容取代該行，直接 Enter 則保留原行"""
+        if not args or not args.isdigit():
+            print("Error: Usage: EDIT <line_number>")
+            return
+        n = int(args)
+        if n < 1 or n > len(self.code_buffer):
+            print(f"Error: Line {n} out of range (1-{len(self.code_buffer)})")
+            return
+        
+        print(f"{n:3d} | {self.code_buffer[n - 1]}")
+        new_content = input(f"{n:3d} > ")
+        if new_content:  # 有輸入東西才取代
+            self.code_buffer[n - 1] = new_content
+            self.is_dirty = True
+            print(f"Line {n} updated.")
+        else:
+            print(f"Line {n} unchanged.")
+
+    def cmd_delete(self, args):
+        """DELETE <n> / DELETE <n1>-<n2>：刪除特定行或範圍"""
+        if not self.code_buffer:
+            print("Buffer is empty.")
+            return
+
+        if args and '-' in args:
+            parts = args.split('-')
+            start, end = int(parts[0]), int(parts[1])
+        elif args and args.isdigit():
+            start = end = int(args)
+        else:
+            print("Error: Usage: DELETE <n> or DELETE <n1>-<n2>")
+            return
+
+        if start < 1 or end > len(self.code_buffer) or start > end:
+            print(f"Error: Invalid range (1-{len(self.code_buffer)})")
+            return
+
+        del self.code_buffer[start - 1 : end]  # slice 一次刪掉整段
+        self.is_dirty = True
+        print(f"Deleted {end - start + 1} line(s).")
+
+    def cmd_insert(self, args):
+        """INSERT <n>：在第 n 行之前插入程式碼，輸入 . 結束"""
+        if not args or not args.isdigit():
+            print("Error: Usage: INSERT <line_number>")
+            return
+        n = int(args)
+        if n < 1 or n > len(self.code_buffer) + 1:
+            print(f"Error: Line {n} out of range (1-{len(self.code_buffer) + 1})")
+            return
+        print("Enter code lines (type '.' on a line by itself to finish):")
+        insert_pos = n - 1
+        count = 0
+        while True:
+            line = input(f"{insert_pos + count + 1:3d} > ")
+            if line == '.':
+                break
+            self.code_buffer.insert(insert_pos + count, line)
+            count += 1
+        if count > 0:
+            self.is_dirty = True
+            print(f"Inserted {count} line(s) at line {n}.")
+
+    def cmd_append(self):
+        """APPEND：在緩衝區末尾進入多行輸入模式，輸入 . 結束"""
+        print("Enter code lines (type '.' on a line by itself to finish):")
+        count = 0
+        while True:
+            line = input(f"{len(self.code_buffer) + 1:3d} > ")
+            if line == '.':
+                break
+            self.code_buffer.append(line)
+            count += 1
+        if count > 0:
+            self.is_dirty = True
+            print(f"Appended {count} line(s).")
+
+    def cmd_new(self):
+        """清空緩衝區"""
+        self.code_buffer.clear()
+        self.is_dirty = False
+        print("Buffer cleared.")
+
+    # ───執行與除錯指令 ─────────────────────────────────────────────────────
 
     def cmd_run(self):
         source_code = '\n'.join(self.code_buffer) # 把 buffer 裡的每一項，用換行符號連接成一個大字串
@@ -161,22 +253,149 @@ class REPL:
         builtins_mgr = BuiltinManager(mem)
 
         interpreter = Interpreter(symtable=sym, memory=mem, builtins=builtins_mgr)
+        self.last_sym = sym
+        self.last_mem = mem
+        self.last_builtins = builtins_mgr
         try:
             interpreter.visit(nodes)
         except Exception as e:
             print(f"[*] 執行 main 時發生未預期錯誤: {e}")
 
-    def cmd_clear(self):
-        self.code_buffer = []
-        return
+    def cmd_check(self):
+        """CHECK：只做語法檢查，不執行程式"""
+        if not self.code_buffer:
+            print("Buffer is empty.")
+            return
+        source_code = '\n'.join(self.code_buffer)
+        try:
+            lexer = Lexer(source_code)
+            tokens = lexer.tokenize()
+            parser_obj = Parser(tokens)
+            parser_obj.parse()
+            print("No syntax errors found.")
+        except SyntaxError as e:
+            print(f"{e}")
+        except Exception as e:
+            print(f"{e}")
+
+    def cmd_vars(self):
+        """VARS：顯示所有全域變數的名稱、型別與當前值"""
+        if self.last_sym is None:
+            print("No execution data. Run your program first.")
+            return
+
+        has_var = False
+        for name, symbol in self.last_sym.globals.items():
+            if symbol.sym_type != 'VAR':
+                continue
+            has_var = True
+
+            if symbol.is_array:
+                # 陣列：顯示長度與前十個元素
+                elements = []
+                for i in range(min(symbol.array_len, 10)):
+                    if symbol.data_type == 'int':
+                        elements.append(str(self.last_mem.read_int(symbol.address + i * 4)))
+                    else:
+                        elements.append(str(self.last_mem.read_char(symbol.address + i)))
+                preview = ", ".join(elements)
+                if symbol.array_len > 10:
+                    preview += ", ..."
+                print(f"  {symbol.data_type} {name}[{symbol.array_len}] = [{preview}]")
+
+            elif symbol.data_type in ('int*', 'char*'):
+                # 指標：顯示存的位址值，以及指向的值
+                ptr_val = self.last_mem.read_int(symbol.address)
+                base_type = symbol.data_type.replace('*', '')
+                try:
+                    if base_type == 'int':
+                        pointed_val = self.last_mem.read_int(ptr_val)
+                    else:
+                        pointed_val = self.last_mem.read_char(ptr_val)
+                    print(f"  {symbol.data_type} {name} = {ptr_val} (points to value: {pointed_val})")
+                except:
+                    print(f"  {symbol.data_type} {name} = {ptr_val} (invalid address)")
+
+            elif symbol.data_type == 'int':
+                val = self.last_mem.read_int(symbol.address)
+                print(f"  int {name} = {val}")
+            elif symbol.data_type == 'char':
+                val = self.last_mem.read_char(symbol.address)
+                print(f"  char {name} = {val} ('{chr(val)}')")
+            else:
+                print(f"  {symbol.data_type} {name} = ?")
+
+        if not has_var:
+            print("No global variables.")
+
+    def cmd_funcs(self):
+        """FUNCS：列出所有函式名稱、回傳型別、參數列表及起始行號。內建函式以 [built-in] 標示。"""
+        # 先列內建函式
+        if self.last_builtins:
+            for name in self.last_builtins.functions.keys():
+                print(f"  {name}()  [built-in]")
+
+        # 再列使用者定義的函式
+        if self.last_sym is None:
+            print("No execution data. Run your program first.")
+            return
+
+        for name, symbol in self.last_sym.globals.items():
+            if symbol.sym_type != 'FUNC':
+                continue
+            func_node = symbol.func_node
+            params = ", ".join(
+                f"{p.type_node.base_type} {p.name}" for p in func_node.params
+            )
+            ret_type = func_node.return_type.base_type
+            line_no = func_node.line
+            print(f"  {ret_type} {name}({params})  [line {line_no}]")
+
+    # ─── 系統指令 ─────────────────────────────────────────────────────
+    def cmd_help(self, args):
+        help_info = {
+            'LOAD':   "LOAD <filename>：從檔案載入 Small-C 原始碼",
+            'SAVE':   "SAVE <filename>：儲存目前程式緩衝區至檔案",
+            'LIST':   "LIST / LIST <n> / LIST <n1>-<n2>：列出程式碼（全部／單行／範圍）",
+            'EDIT':   "EDIT <n>：編輯特定行的程式碼",
+            'DELETE': "DELETE <n> / DELETE <n1>-<n2>：刪除特定行或範圍",
+            'INSERT': "INSERT <n>：在特定行之前插入程式碼",
+            'APPEND': "APPEND：在緩衝區末尾進入多行輸入模式（輸入 . 結束）",
+            'NEW':    "NEW：清除緩衝區並重置執行狀態",
+            'RUN':    "RUN：執行目前緩衝區的程式",
+            'CHECK':  "CHECK：進行語法與語意檢查但不執行",
+            'TRACE':  "TRACE ON / TRACE OFF：開啟／關閉執行追蹤模式",
+            'VARS':   "VARS：顯示目前所有全域變數名稱、型別與值",
+            'FUNCS':  "FUNCS：顯示目前已定義的所有函式清單",
+            'HELP':   "HELP / HELP <command>：顯示輔助說明",
+            'ABOUT':  "ABOUT：顯示解譯器資訊",
+            'CLEAR':  "CLEAR：清除終端機畫面",
+            'QUIT':   "QUIT / EXIT：結束解譯器",
+        }
+        if args and args.upper() in help_info:
+            print(help_info[args.upper()])
+        else:
+            print("═" * 50)
+            print("  Small-C REPL 指令說明")
+            print("═" * 50)
+            for cmd, desc in help_info.items():
+                print(f"  {desc}")
+            print("═" * 50)
 
     def cmd_about(self):
         print(">> Small-C Interactive Interpreter v1.0")
         print(">> System Software Final Project, Spring 2026")
         print("作者1, 2, 3")
 
-
-# # 為了方便測試，可以直接執行此檔案
-# if __name__ == "__main__":
-#     repl = REPL()
-#     repl.start()
+    def cmd_clear(self):
+        """清除終端機畫面"""
+        import os
+        os.system('cls')  # Windows 用 cls
+    
+    def cmd_quit(self):
+        """離開 REPL，如果有未儲存的修改需警告"""
+        if self.is_dirty:
+            ans = input("Buffer has unsaved changes. Really quit? (y/N): ")
+            if ans.lower() != 'y':
+                return False # 取消離開
+        return True # 確認離開
