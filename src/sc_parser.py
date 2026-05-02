@@ -101,18 +101,19 @@ class Parser:
             int x = 5;     → 全域變數宣告
         """
         type_node = self.parse_type()
-        name = self.eat('ID').value
+        name_token = self.eat('ID')
+        name = name_token.value
 
         if self.current_token.type == 'LPAREN':
             # 函式定義
-            return self.parse_func_def(type_node, name)
+            return self.parse_func_def(type_node, name, name_token.line)
         else:
             # 全域變數宣告
             return self.parse_var_decl_rest(type_node, name)
 
     # ─── 函式定義 ──────────────────────────────────────────────────────────────
 
-    def parse_func_def(self, return_type, name):
+    def parse_func_def(self, return_type, name, line):
         """
         已知型別與名稱，從 '(' 開始解析函式定義。
         格式：( params ) block
@@ -121,7 +122,7 @@ class Parser:
         params = self.parse_params()
         self.eat('RPAREN')
         body = self.parse_block()
-        return FuncDefNode(return_type, name, params, body)
+        return FuncDefNode(return_type, name, params, body, line)
 
     def parse_params(self):
         """

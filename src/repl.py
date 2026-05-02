@@ -6,6 +6,7 @@ from interpreter import Interpreter
 from memory import Memory
 from symtable import SymbolTable
 from sc_builtins import BuiltinManager
+from ast_node import FuncDefNode
 
 
 class REPL:
@@ -18,6 +19,53 @@ class REPL:
         self.last_sym = None       # 上次執行的符號表
         self.last_mem = None       # 上次執行的記憶體
         self.last_builtins = None  # 上次執行的內建函式管理器
+
+    def _type_name(self, type_node):
+        return type_node.base_type + ("*" * type_node.pointer_depth)
+
+    def _char_repr(self, value):
+        try:
+            return repr(chr(value if value >= 0 else value + 256))
+        except Exception:
+            return "?"
+
+    def _parse_buffer(self):
+        source_code = '\n'.join(self.code_buffer)
+        lexer = Lexer(source_code)
+        tokens = lexer.tokenize()
+        parser_obj = Parser(tokens)
+        return parser_obj.parse()
+
+    def _format_live_symbol(self, symbol):
+        if symbol.is_array:
+            elements = []
+            step = 4 if symbol.data_type == 'int' else 1
+            for i in range(min(symbol.array_len, 10)):
+                addr = symbol.address + i * step
+                if symbol.data_type == 'int':
+                    elements.append(str(self.last_mem.read_int(addr)))
+                else:
+                    elements.append(str(self.last_mem.read_char(addr)))
+            preview = ", ".join(elements)
+            if symbol.array_len > 10:
+                preview += ", ..."
+            return f"  {symbol.data_type} {symbol.name}[{symbol.array_len}] = [{preview}]"
+
+        if symbol.data_type.endswith('*'):
+            ptr_val = self.last_mem.read_int(symbol.address)
+            base_type = symbol.data_type[:-1]
+            try:
+                pointed_val = self.last_mem.read_char(ptr_val) if base_type == 'char' else self.last_mem.read_int(ptr_val)
+                return f"  {symbol.data_type} {symbol.name} = address: {ptr_val} (points to value: {pointed_val})"
+            except Exception:
+                return f"  {symbol.data_type} {symbol.name} = address: {ptr_val} (invalid address)"
+
+        if symbol.data_type == 'int':
+            return f"  int {symbol.name} = {self.last_mem.read_int(symbol.address)}"
+        if symbol.data_type == 'char':
+            val = self.last_mem.read_char(symbol.address)
+            return f"  char {symbol.name} = {val} ({self._char_repr(val)})"
+        return f"  {symbol.data_type} {symbol.name} = ?"
 
     def start(self):
         """啟動互動式介面"""
@@ -284,72 +332,51 @@ class REPL:
             print("No execution data. Run your program first.")
             return
 
-        has_var = False
-        for name, symbol in self.last_sym.globals.items():
-            if symbol.sym_type != 'VAR':
-                continue
-            has_var = True
-
-            if symbol.is_array:
-                # 陣列：顯示長度與前十個元素
-                elements = []
-                for i in range(min(symbol.array_len, 10)):
-                    if symbol.data_type == 'int':
-                        elements.append(str(self.last_mem.read_int(symbol.address + i * 4)))
-                    else:
-                        elements.append(str(self.last_mem.read_char(symbol.address + i)))
-                preview = ", ".join(elements)
-                if symbol.array_len > 10:
-                    preview += ", ..."
-                print(f"  {symbol.data_type} {name}[{symbol.array_len}] = [{preview}]")
-
-            elif symbol.data_type in ('int*', 'char*'):
-                # 指標：顯示存的位址值，以及指向的值
-                ptr_val = self.last_mem.read_int(symbol.address)
-                base_type = symbol.data_type.replace('*', '')
-                try:
-                    if base_type == 'int':
-                        pointed_val = self.last_mem.read_int(ptr_val)
-                    else:
-                        pointed_val = self.last_mem.read_char(ptr_val)
-                    print(f"  {symbol.data_type} {name} = {ptr_val} (points to value: {pointed_val})")
-                except:
-                    print(f"  {symbol.data_type} {name} = {ptr_val} (invalid address)")
-
-            elif symbol.data_type == 'int':
-                val = self.last_mem.read_int(symbol.address)
-                print(f"  int {name} = {val}")
-            elif symbol.data_type == 'char':
-                val = self.last_mem.read_char(symbol.address)
-                print(f"  char {name} = {val} ('{chr(val)}')")
-            else:
-                print(f"  {symbol.data_type} {name} = ?")
-
-        if not has_var:
+        global_vars = [
+            symbol for symbol in self.last_sym.globals.values()
+            if symbol.sym_type == 'VAR'
+        ]
+        if not global_vars:
             print("No global variables.")
-
-    def cmd_funcs(self):
-        """FUNCS：列出所有函式名稱、回傳型別、參數列表及起始行號。內建函式以 [built-in] 標示。"""
-        # 先列內建函式
-        if self.last_builtins:
-            for name in self.last_builtins.functions.keys():
-                print(f"  {name}()  [built-in]")
-
-        # 再列使用者定義的函式
-        if self.last_sym is None:
-            print("No execution data. Run your program first.")
             return
 
-        for name, symbol in self.last_sym.globals.items():
-            if symbol.sym_type != 'FUNC':
-                continue
-            func_node = symbol.func_node
+        for symbol in global_vars:
+            print(self._format_live_symbol(symbol))
+
+    def cmd_funcs(self):
+        """FUNCS：列出內建函式與目前緩衝區中的使用者函式"""
+        builtins_mgr = self.last_builtins or BuiltinManager(self.last_mem or Memory())
+        for name in builtins_mgr.functions.keys():
+            print(f"  {name}()  [built-in]")
+
+        if not self.code_buffer:
+            return
+
+        try:
+            nodes = self._parse_buffer()
+        except SyntaxError as e:
+            print(f"[!] 語法錯誤，無法列出使用者函式: {e}")
+            return
+        except Exception as e:
+            print(f"[!] 解析錯誤，無法列出使用者函式: {e}")
+            return
+
+        user_funcs = [
+            node for node in nodes.declarations
+            if isinstance(node, FuncDefNode)
+        ]
+
+        if not user_funcs:
+            print("  (no user-defined functions)")
+            return
+
+        for func_node in user_funcs:
             params = ", ".join(
-                f"{p.type_node.base_type} {p.name}" for p in func_node.params
+                f"{self._type_name(p.type_node)} {p.name}" for p in func_node.params
             )
-            ret_type = func_node.return_type.base_type
-            line_no = func_node.line
-            print(f"  {ret_type} {name}({params})  [line {line_no}]")
+            ret_type = self._type_name(func_node.return_type)
+            line_no = func_node.line if func_node.line is not None else "?"
+            print(f"  {ret_type} {func_node.name}({params})  [line {line_no}]")
 
     # ─── 系統指令 ─────────────────────────────────────────────────────
     def cmd_help(self, args):

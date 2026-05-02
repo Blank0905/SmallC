@@ -47,11 +47,12 @@ class VarDeclNode(ASTNode):
 
 class FuncDefNode(ASTNode):
     """函式定義，例如 int add(int a, int b) { return a + b; }"""
-    def __init__(self, return_type, name, params, body):
+    def __init__(self, return_type, name, params, body, line=None):
         self.return_type = return_type  # TypeNode
         self.name = name                # str，函式名稱
         self.params = params            # list of VarDeclNode（參數列表）
         self.body = body                # BlockNode
+        self.line = line                # 函式名稱所在行號
 
 # ─── 運算式（Expressions） ────────────────────────────────────────────────────
 
