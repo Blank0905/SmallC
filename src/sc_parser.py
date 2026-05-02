@@ -107,9 +107,18 @@ class Parser:
         if self.current_token.type == 'LPAREN':
             # 函式定義
             return self.parse_func_def(type_node, name, name_token.line)
+        elif self.current_token.type == 'HASH':
+            return self.parse_hash_define()
         else:
             # 全域變數宣告
             return self.parse_var_decl_rest(type_node, name)
+
+    def parse_hash_define(self):
+        self.eat('HASH')
+        name = self.eat('ID')      # 這邊應該會吃掉DEFINE這個ID
+        var = self.eat('ID').value
+        const_int = self.eat('INT_TYPE').value
+        return PreDefineNode(name, var, const_int)
 
     # ─── 函式定義 ──────────────────────────────────────────────────────────────
 
