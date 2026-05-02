@@ -7,6 +7,7 @@ from memory import Memory
 from symtable import SymbolTable
 from sc_builtins import BuiltinManager
 from ast_node import FuncDefNode
+from preprocessor import Preprocessor
 
 
 class REPL:
@@ -31,6 +32,7 @@ class REPL:
 
     def _parse_buffer(self):
         source_code = '\n'.join(self.code_buffer)
+        source_code = Preprocessor().process(source_code)
         lexer = Lexer(source_code)
         tokens = lexer.tokenize()
         parser_obj = Parser(tokens)
@@ -282,13 +284,8 @@ class REPL:
     # ───執行與除錯指令 ─────────────────────────────────────────────────────
 
     def cmd_run(self):
-        source_code = '\n'.join(self.code_buffer) # 把 buffer 裡的每一項，用換行符號連接成一個大字串
-        
         try:
-            lexer = Lexer(source_code)
-            tokens = lexer.tokenize()
-            parser_obj = Parser(tokens)
-            nodes = parser_obj.parse()
+            nodes = self._parse_buffer()
         except SyntaxError as e:
             print(f"[!] 語法錯誤: {e}")
             return
@@ -314,12 +311,8 @@ class REPL:
         if not self.code_buffer:
             print("Buffer is empty.")
             return
-        source_code = '\n'.join(self.code_buffer)
         try:
-            lexer = Lexer(source_code)
-            tokens = lexer.tokenize()
-            parser_obj = Parser(tokens)
-            parser_obj.parse()
+            self._parse_buffer()
             print("No syntax errors found.")
         except SyntaxError as e:
             print(f"{e}")
