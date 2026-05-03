@@ -144,7 +144,7 @@ class REPL:
             elif command == 'EDIT':
                 self.cmd_edit(args)
             # 判斷是否為其他預留指令 (防止被當成 C 程式碼)
-            elif command in ('TRACE', 'VARS', 'FUNCS'):
+            elif command in ('TRACE'):
                 print(f"指令 {command} 尚未實作！")
             else:
                 # 作業規定：如果不是任何已知指令，就視為 Small-C 程式碼，直接加入緩衝區！

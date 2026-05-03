@@ -217,8 +217,9 @@ int main() {
 ### 範例十四
 ```c
 int gcd(int a, int b) {
+    int temp;
     while (b != 0) {
-        int temp;
+        
         temp = b;
         b = a % b;
         a = temp;
@@ -285,13 +286,8 @@ sc> NEW
 sc> int n = 29;
 sc> int i;
 sc> int is_prime = 1;
-sc> for (i = 2; i * i <= n; i = i + 1) {
-  >     if (n % i == 0) {
-  >         is_prime = 0;
-  >         break;
-  >     }
-  > }
-sc> printf("%d is prime: %d\n", n, is_prime);
+sc> 
+
 
 /* 包裝成函式 */
 int is_prime(int n) {
