@@ -53,7 +53,7 @@ class BuiltinManager:
         return ch
 
     def builtin_printf(self, format_addr, *args):
-        fmt = self.memory.read_string(format_addr)# 1. 把格式化字串 (例如 "Hello %s, score: %d\n") 從記憶體讀出來
+        fmt = self.memory.read_string(format_addr)#  把格式化字串 (例如 "Hello %s, score: %d\n") 從記憶體讀出來
         output = ""
         pos = 0
         arg_idx = 0
