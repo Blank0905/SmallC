@@ -6,7 +6,7 @@ from repl import REPL
 
 def main():
     repl = REPL()
-    repl.start()
+    repl.start() # test
 
 if __name__ == "__main__":
     main()
