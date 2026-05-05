@@ -14,8 +14,9 @@ class ContinueException(Exception):
     pass
 
 class Interpreter:
-    def __init__(self, symtable, memory, builtins, program_buffer):
+    def __init__(self, symtable, memory, builtins, program_buffer, trace):
         self.program_buffer = program_buffer
+        self.trace = trace
         self.symtable = symtable
         self.memory = memory
         self.builtins = builtins
@@ -56,6 +57,18 @@ class Interpreter:
             return self.visit(node)
         finally:
             self.in_block_scope = old_flag
+
+    def _trace(self, node):
+        if self.trace == False:
+            return
+        line = getattr(node, 'line', None) # line = node.line 但如果存取不到node.line會預設是None
+        if not line:
+            return
+        stmt = '<unknown>'
+        if self.program_buffer and 1 <= line <= len(self.program_buffer):
+            stmt = self.program_buffer[line - 1].strip() # strip(): 移除字串頭尾的空白字元（包含半形/全形空格、換行符號 \n、Tab \t 等）
+        print(f"[line {line}] {stmt}")
+
 
     # ==========================================
     # 執行各個 AST 節點的具體邏輯
@@ -120,12 +133,8 @@ class Interpreter:
             old_block_flag = self.in_block_scope
             self.in_block_scope = False  # 進入新函式，重置區塊旗標以允許開頭宣告
 
-            line_no = node.line
-            # 直接從管理原始碼的 List 或 Dict 中取出那一行
-            raw_source = self.program_buffer[line_no]
             try:
                 try:
-                    print(f"[line {func_node.line}] {raw_source.strip()}" ) 
                     self.visit(func_node.body)
                 except ReturnException as e: # 有return
                     # 接住 return 回來的值
@@ -222,6 +231,7 @@ class Interpreter:
 
     def visit_VarDeclNode(self, node):
         """處理變數宣告，例如: int x = 1 + 2 * 3; 或 int arr[10];"""
+        self._trace(node)
         # Small-C 不允許在 if/while/for 區塊內宣告變數
         if self.in_block_scope:
             raise RuntimeError(f"Semantic Error: Small-C 不支援在控制流區塊內宣告變數 '{node.name}'，請將宣告移至函式開頭")
@@ -438,11 +448,13 @@ class Interpreter:
 
     def visit_ExprStmtNode(self, node): # 應該是回傳整個式子
         """處理加上了分號的純表達式，例如 a = 10;"""
+        self._trace(node)
         # 直接把裡面的表達式拿出來執行即可
         return self.visit(node.expr)
 
     def visit_IfNode(self, node):
         """處理if-else，例如 if (x > 0) { ... } else { ... }"""
+        self._trace(node)
         if self.visit(node.condition) != 0:
             self._visit_control_body(node.then_block)
         elif node.else_block is not None:
@@ -451,6 +463,7 @@ class Interpreter:
     
     def visit_ReturnNode(self, node):
         """處理 return 語句"""
+        self._trace(node)
         value = 0
         if node.value is not None:
             value = self.visit(node.value) # 算出 return 後面的數字
@@ -459,6 +472,7 @@ class Interpreter:
         raise ReturnException(value)
 
     def visit_WhileNode(self, node):
+        self._trace(node)
         while self.visit(node.condition) != 0:
             try:
                 self._visit_control_body(node.body)
@@ -468,6 +482,7 @@ class Interpreter:
                 continue  # 直接跳回去重新判斷條件
 
     def visit_DoWhileNode(self, node):
+        self._trace(node)
         while True:
             try:
                 self._visit_control_body(node.body)
@@ -479,6 +494,7 @@ class Interpreter:
                 break
 
     def visit_ForNode(self, node):
+        self._trace(node)
         if node.init is not None:
             self.visit(node.init)
         while node.condition is None or self.visit(node.condition) != 0:
@@ -495,7 +511,9 @@ class Interpreter:
 
 
     def visit_BreakNode(self, node):
+        self._trace(node)
         raise BreakException()
 
     def visit_ContinueNode(self, node):
+        self._trace(node)
         raise ContinueException()

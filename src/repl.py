@@ -43,8 +43,10 @@ class REPL:
     def _trace_buffer(self, args):
         if args.upper() == 'ON':
             self.trace = True
+            print("trace is on")
         elif args.upper() == 'OFF':
             self.trace = False
+            print("trace is off")
         else:
             print("格式錯誤")
     
@@ -83,18 +85,18 @@ class REPL:
     def start(self):
         """啟動互動式介面"""
         banner = r"""
-╔══════════════════════════════════════════════════════════════════════════════════╗
-║                                                                                  ║
-║   ██████╗ ███╗   ███╗  █████╗  ██╗      ██╗         ██████╗                      ║
-║  ██╔════╝ ████╗ ████║ ██╔══██╗ ██║      ██║        ██╔════╝                      ║
-║  ███████╗ ██╔████╔██║ ███████║ ██║      ██║        ██║                           ║
-║  ╚════██║ ██║╚██╔╝██║ ██╔══██║ ██║      ██║        ██║                           ║
-║  ███████║ ██║ ╚═╝ ██║ ██║  ██║ ███████╗ ███████╗   ╚██████╗                      ║
-║  ╚══════╝ ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚══════╝ ╚══════╝    ╚═════╝                      ║
-║                                                                                  ║
-║ >> Small-C Interactive Interpreter v1.0                                          ║
-║ >> System Software Final Project, Spring 2026                                    ║
-╚══════════════════════════════════════════════════════════════════════════════════╝
+╔═════════════════════════════════════════════════════════════════╗
+║                                                                 ║
+║   ██████╗ ███╗   ███╗  █████╗  ██╗      ██╗         ██████╗     ║
+║  ██╔════╝ ████╗ ████║ ██╔══██╗ ██║      ██║        ██╔════╝     ║
+║  ███████╗ ██╔████╔██║ ███████║ ██║      ██║        ██║          ║
+║  ╚════██║ ██║╚██╔╝██║ ██╔══██║ ██║      ██║        ██║          ║
+║  ███████║ ██║ ╚═╝ ██║ ██║  ██║ ███████╗ ███████╗   ╚██████╗     ║
+║  ╚══════╝ ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚══════╝ ╚══════╝    ╚═════╝     ║
+║                                                                 ║
+║ >> Small-C Interactive Interpreter v1.0                         ║
+║ >> System Software Final Project, Spring 2026                   ║
+╚═════════════════════════════════════════════════════════════════╝
         """
         print(banner)
         print("Type 'HELP' for a list of commands.")
@@ -315,7 +317,7 @@ class REPL:
         sym = SymbolTable(mem)
         builtins_mgr = BuiltinManager(mem)
 
-        interpreter = Interpreter(symtable=sym, memory=mem, builtins=builtins_mgr, program_buffer = self.code_buffer)
+        interpreter = Interpreter(symtable=sym, memory=mem, builtins=builtins_mgr, program_buffer = self.code_buffer, trace = self.trace)
         self.last_sym = sym
         self.last_mem = mem
         self.last_builtins = builtins_mgr

@@ -54,7 +54,6 @@ class FuncDefNode(ASTNode):
         self.params = params            # list of VarDeclNode（參數列表）
         self.body = body                # BlockNode
         self.line = line                # 函式名稱所在行號
-        # self.text = text
 
 # ─── 運算式（Expressions） ────────────────────────────────────────────────────
 
@@ -114,8 +113,9 @@ class BlockNode(ASTNode):
 
 class ExprStmtNode(ASTNode):
     """表達式語句（expression + 分號），例如 x = 1;"""
-    def __init__(self, expr):
+    def __init__(self, expr, line):
         self.expr = expr        # ASTNode
+        self.line = line
 
 class IfNode(ASTNode):
     """if-else，例如 if (x > 0) { ... } else { ... }"""
@@ -150,16 +150,19 @@ class ForNode(ASTNode):
 
 class ReturnNode(ASTNode):
     """return 語句，例如 return x + 1;"""
-    def __init__(self, value=None):
+    def __init__(self, value=None, line = -1):
         self.value = value      # ASTNode | None（void 函式 return; 時為 None）
+        self.line = line
 
 class BreakNode(ASTNode):
     """break; 語句"""
-    pass
+    def __init__(self, line):
+        self.line = line
 
 class ContinueNode(ASTNode):
     """continue; 語句"""
-    pass
+    def __init__(self, line):
+        self.line = line
 
 class ProgramNode(ASTNode):
     """整個程式（最頂層節點），包含所有全域宣告與函式定義"""

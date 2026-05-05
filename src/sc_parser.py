@@ -200,11 +200,13 @@ class Parser:
         elif t == 'BREAK':
             self.advance()
             self.eat('SEMI')
-            return BreakNode()
+            line = self.current_token.line
+            return BreakNode(line)
         elif t == 'CONTINUE':
             self.advance()
             self.eat('SEMI')
-            return ContinueNode()
+            line = self.current_token.line
+            return ContinueNode(line)
         elif t == 'LBRACE':
             return self.parse_block()
         else:
@@ -343,7 +345,8 @@ class Parser:
         """解析表達式語句（expr 後面接 ;）"""
         expr = self.parse_expr()
         self.eat('SEMI')
-        return ExprStmtNode(expr)
+        line = self.current_token.line
+        return ExprStmtNode(expr, line)
 
     # ─── 表達式（依優先級由低到高） ────────────────────────────────────────────
 
