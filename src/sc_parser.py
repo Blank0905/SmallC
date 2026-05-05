@@ -109,7 +109,7 @@ class Parser:
             return self.parse_func_def(type_node, name, name_token.line)
         else:
             # 全域變數宣告
-            return self.parse_var_decl_rest(type_node, name)
+            return self.parse_var_decl_rest(type_node, name, name_token.line)
 
     # ─── 函式定義 ──────────────────────────────────────────────────────────────
 
@@ -150,7 +150,8 @@ class Parser:
         """解析單一參數，例如 int a 或 char* s"""
         type_node = self.parse_type()
         name = self.eat('ID').value
-        return VarDeclNode(type_node, name)
+        line = self.current_token.line
+        return VarDeclNode(type_node, name, line)
 
     # ─── 區塊與語句 ────────────────────────────────────────────────────────────
 
@@ -219,16 +220,18 @@ class Parser:
             int a[10];
             char* s = "hi";
         """
+        line = self.current_token.line
         type_node = self.parse_type()
         name = self.eat('ID').value
-        return self.parse_var_decl_rest(type_node, name)
+        return self.parse_var_decl_rest(type_node, name, line)
 
-    def parse_var_decl_rest(self, type_node, name):
+    def parse_var_decl_rest(self, type_node, name, line):
         """
         已知型別與名稱，解析宣告的剩餘部分（初始值、陣列大小、分號）。
         """
         array_size = None
         init_expr = None
+        line = self.current_token.line
 
         if self.current_token.type == 'LBRACK':
             # 陣列宣告：int a[10]
@@ -240,9 +243,10 @@ class Parser:
             # 初始值：int x = 5
             self.eat('ASSIGN')
             init_expr = self.parse_expr()
+            line = self.current_token.line
 
         self.eat('SEMI')
-        return VarDeclNode(type_node, name, init_expr, array_size)
+        return VarDeclNode(type_node, name, line, init_expr, array_size)
 
     # ─── 控制流程語句 ──────────────────────────────────────────────────────────
 
@@ -258,13 +262,14 @@ class Parser:
         condition = self.parse_expr()
         self.eat('RPAREN')
         then_block = self.parse_statement()  # 可以是 block 或單一語句
+        line = self.current_token.line
 
         else_block = None
         if self.current_token.type == 'ELSE':
             self.eat('ELSE')
             else_block = self.parse_statement()  # else if 或 else { }
 
-        return IfNode(condition, then_block, else_block)
+        return IfNode(condition, then_block, line, else_block)
 
     def parse_while(self):
         """解析 while 迴圈：while (cond) body"""
@@ -273,7 +278,8 @@ class Parser:
         condition = self.parse_expr()
         self.eat('RPAREN')
         body = self.parse_statement()
-        return WhileNode(condition, body)
+        line = self.current_token.line
+        return WhileNode(condition, body, line)
 
     def parse_do_while(self):
         """解析 do-while：do body while (cond);"""
@@ -284,7 +290,8 @@ class Parser:
         condition = self.parse_expr()
         self.eat('RPAREN')
         self.eat('SEMI')
-        return DoWhileNode(body, condition)
+        line = self.current_token.line
+        return DoWhileNode(body, condition, line)
 
     def parse_for(self):
         """
@@ -319,7 +326,8 @@ class Parser:
 
         self.eat('RPAREN')
         body = self.parse_statement()
-        return ForNode(init, condition, update, body)
+        line = self.current_token.line
+        return ForNode(init, condition, update, body, line)
 
     def parse_return(self):
         """解析 return 語句：return; 或 return expr;"""

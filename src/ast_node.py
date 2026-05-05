@@ -39,20 +39,22 @@ class TypeNode(ASTNode):
 
 class VarDeclNode(ASTNode):
     """變數宣告，例如 int x; 或 int x = 5;"""
-    def __init__(self, type_node, name, init_expr=None, array_size=None):
+    def __init__(self, type_node, name, line, init_expr=None, array_size=None):
         self.type_node = type_node      # TypeNode
         self.name = name                # str，變數名稱
         self.init_expr = init_expr      # ASTNode | None，初始值
         self.array_size = array_size    # ASTNode | None，陣列大小（int a[10] 的 10）
+        self.line = line
 
 class FuncDefNode(ASTNode):
     """函式定義，例如 int add(int a, int b) { return a + b; }"""
-    def __init__(self, return_type, name, params, body, line=None):
+    def __init__(self, return_type, name, params, body, line=None, text=None):
         self.return_type = return_type  # TypeNode
         self.name = name                # str，函式名稱
         self.params = params            # list of VarDeclNode（參數列表）
         self.body = body                # BlockNode
         self.line = line                # 函式名稱所在行號
+        # self.text = text
 
 # ─── 運算式（Expressions） ────────────────────────────────────────────────────
 
@@ -117,30 +119,34 @@ class ExprStmtNode(ASTNode):
 
 class IfNode(ASTNode):
     """if-else，例如 if (x > 0) { ... } else { ... }"""
-    def __init__(self, condition, then_block, else_block=None):
+    def __init__(self, condition, then_block, line, else_block=None):
         self.condition = condition      # ASTNode
         self.then_block = then_block    # ASTNode（BlockNode 或單一語句）
         self.else_block = else_block    # ASTNode | None
+        self.line = line
 
 class WhileNode(ASTNode):
     """while 迴圈，例如 while (i < 10) { ... }"""
-    def __init__(self, condition, body):
+    def __init__(self, condition, body, line):
         self.condition = condition      # ASTNode
         self.body = body                # ASTNode
+        self.line = line
 
 class DoWhileNode(ASTNode):
     """do-while 迴圈，例如 do { ... } while (x > 0);"""
-    def __init__(self, body, condition):
+    def __init__(self, body, condition, line):
         self.body = body            # ASTNode
         self.condition = condition  # ASTNode
+        self.line = line
 
 class ForNode(ASTNode):
     """for 迴圈，例如 for (int i=0; i<10; i++) { ... }"""
-    def __init__(self, init, condition, update, body):
+    def __init__(self, init, condition, update, body, line):
         self.init = init            # ASTNode | None（初始化）
         self.condition = condition  # ASTNode | None（條件）
         self.update = update        # ASTNode | None（更新）
         self.body = body            # ASTNode
+        self.line = line
 
 class ReturnNode(ASTNode):
     """return 語句，例如 return x + 1;"""

@@ -14,7 +14,8 @@ class ContinueException(Exception):
     pass
 
 class Interpreter:
-    def __init__(self, symtable, memory, builtins):
+    def __init__(self, symtable, memory, builtins, program_buffer):
+        self.program_buffer = program_buffer
         self.symtable = symtable
         self.memory = memory
         self.builtins = builtins
@@ -75,8 +76,7 @@ class Interpreter:
                 return self.visit_FuncCallNode(main_call)
         except Exception as e:
             if "not found" not in str(e).lower():
-                print(f"[*] 執行 main 時發生未預期錯誤: {e}")
-        
+                print(f"[*] 執行 main 時發生未預期錯誤: {e}")        
         return result
 
     def visit_FuncCallNode(self, node):
@@ -119,8 +119,13 @@ class Interpreter:
             ret_val = 0
             old_block_flag = self.in_block_scope
             self.in_block_scope = False  # 進入新函式，重置區塊旗標以允許開頭宣告
+
+            line_no = node.line
+            # 直接從管理原始碼的 List 或 Dict 中取出那一行
+            raw_source = self.program_buffer[line_no]
             try:
                 try:
+                    print(f"[line {func_node.line}] {raw_source.strip()}" ) 
                     self.visit(func_node.body)
                 except ReturnException as e: # 有return
                     # 接住 return 回來的值

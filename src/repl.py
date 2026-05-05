@@ -21,6 +21,8 @@ class REPL:
         self.last_mem = None       # 上次執行的記憶體
         self.last_builtins = None  # 上次執行的內建函式管理器
 
+        self.trace = False # 要拿來弄trace的
+
     def _type_name(self, type_node):
         return type_node.base_type + ("*" * type_node.pointer_depth)
 
@@ -37,6 +39,15 @@ class REPL:
         tokens = lexer.tokenize()
         parser_obj = Parser(tokens)
         return parser_obj.parse()
+    
+    def _trace_buffer(self, args):
+        if args.upper() == 'ON':
+            self.trace = True
+        elif args.upper() == 'OFF':
+            self.trace = False
+        else:
+            print("格式錯誤")
+    
 
     def _format_live_symbol(self, symbol):
         if symbol.is_array:
@@ -143,11 +154,10 @@ class REPL:
                 self.cmd_about()
             elif command == 'EDIT':
                 self.cmd_edit(args)
-            # 判斷是否為其他預留指令 (防止被當成 C 程式碼)
-            elif command in ('TRACE'):
-                print(f"指令 {command} 尚未實作！")
+            elif command == 'TRACE':
+                self._trace_buffer(args)
             else:
-                # 作業規定：如果不是任何已知指令，就視為 Small-C 程式碼，直接加入緩衝區！
+                # 如果不是任何已知指令，就視為 Small-C 程式碼，直接加入緩衝區
                 self.code_buffer.append(line)
                 self.is_dirty = True # 標記為已修改  
 
@@ -305,7 +315,7 @@ class REPL:
         sym = SymbolTable(mem)
         builtins_mgr = BuiltinManager(mem)
 
-        interpreter = Interpreter(symtable=sym, memory=mem, builtins=builtins_mgr)
+        interpreter = Interpreter(symtable=sym, memory=mem, builtins=builtins_mgr, program_buffer = self.code_buffer)
         self.last_sym = sym
         self.last_mem = mem
         self.last_builtins = builtins_mgr
