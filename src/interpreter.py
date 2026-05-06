@@ -472,8 +472,10 @@ class Interpreter:
         raise ReturnException(value)
 
     def visit_WhileNode(self, node):
-        self._trace(node)
-        while self.visit(node.condition) != 0:
+        while True:
+            self._trace(node)
+            if self.visit(node.condition) == 0:
+                break
             try:
                 self._visit_control_body(node.body)
             except BreakException:
@@ -482,8 +484,8 @@ class Interpreter:
                 continue  # 直接跳回去重新判斷條件
 
     def visit_DoWhileNode(self, node):
-        self._trace(node)
         while True:
+            self._trace(node)
             try:
                 self._visit_control_body(node.body)
             except BreakException:
@@ -494,10 +496,13 @@ class Interpreter:
                 break
 
     def visit_ForNode(self, node):
-        self._trace(node)
         if node.init is not None:
+            self._trace(node) # 追蹤初始化部分
             self.visit(node.init)
-        while node.condition is None or self.visit(node.condition) != 0:
+        while True:
+            self._trace(node) # 追蹤條件判定
+            if node.condition is not None and self.visit(node.condition) == 0:
+                break
             try:
                 self._visit_control_body(node.body)
             except BreakException:
@@ -505,6 +510,7 @@ class Interpreter:
             except ContinueException:
                 pass
             if node.update is not None:
+                # self._trace(node) # 更新部分是否追蹤可再商榷，目前通常追蹤一次 for 即可
                 self.visit(node.update)
 
 

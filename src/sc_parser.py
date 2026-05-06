@@ -198,14 +198,14 @@ class Parser:
         elif t == 'RETURN':
             return self.parse_return()
         elif t == 'BREAK':
+            line = self.current_token.line
             self.advance()
             self.eat('SEMI')
-            line = self.current_token.line
             return BreakNode(line)
         elif t == 'CONTINUE':
+            line = self.current_token.line
             self.advance()
             self.eat('SEMI')
-            line = self.current_token.line
             return ContinueNode(line)
         elif t == 'LBRACE':
             return self.parse_block()
@@ -233,7 +233,6 @@ class Parser:
         """
         array_size = None
         init_expr = None
-        line = self.current_token.line
 
         if self.current_token.type == 'LBRACK':
             # 陣列宣告：int a[10]
@@ -245,7 +244,6 @@ class Parser:
             # 初始值：int x = 5
             self.eat('ASSIGN')
             init_expr = self.parse_expr()
-            line = self.current_token.line
 
         self.eat('SEMI')
         return VarDeclNode(type_node, name, line, init_expr, array_size)
@@ -259,40 +257,38 @@ class Parser:
             if (x > 0) { ... } else { ... }
             if (x > 0) { ... } else if (y > 0) { ... }  ← else if 鏈
         """
+        line = self.current_token.line
         self.eat('IF')
         self.eat('LPAREN')
         condition = self.parse_expr()
         self.eat('RPAREN')
         then_block = self.parse_statement()  # 可以是 block 或單一語句
-        line = self.current_token.line
-
         else_block = None
         if self.current_token.type == 'ELSE':
             self.eat('ELSE')
             else_block = self.parse_statement()  # else if 或 else { }
-
         return IfNode(condition, then_block, line, else_block)
 
     def parse_while(self):
         """解析 while 迴圈：while (cond) body"""
+        line = self.current_token.line
         self.eat('WHILE')
         self.eat('LPAREN')
         condition = self.parse_expr()
         self.eat('RPAREN')
-        body = self.parse_statement()
-        line = self.current_token.line
+        body = self.parse_statement()      
         return WhileNode(condition, body, line)
 
     def parse_do_while(self):
         """解析 do-while：do body while (cond);"""
+        line = self.current_token.line
         self.eat('DO')
         body = self.parse_statement()
         self.eat('WHILE')
         self.eat('LPAREN')
         condition = self.parse_expr()
         self.eat('RPAREN')
-        self.eat('SEMI')
-        line = self.current_token.line
+        self.eat('SEMI')       
         return DoWhileNode(body, condition, line)
 
     def parse_for(self):
@@ -300,6 +296,7 @@ class Parser:
         解析 for 迴圈：for (init; cond; update) body
         init 可以是變數宣告或表達式，三個部分都可省略。
         """
+        line = self.current_token.line
         self.eat('FOR')
         self.eat('LPAREN')
 
@@ -328,24 +325,25 @@ class Parser:
 
         self.eat('RPAREN')
         body = self.parse_statement()
-        line = self.current_token.line
+        
         return ForNode(init, condition, update, body, line)
 
     def parse_return(self):
         """解析 return 語句：return; 或 return expr;"""
+        line = self.current_token.line
         self.eat('RETURN')
         if self.current_token.type == 'SEMI':
             self.eat('SEMI')
             return ReturnNode(None)
         value = self.parse_expr()
         self.eat('SEMI')
-        return ReturnNode(value)
+        return ReturnNode(value, line)
 
     def parse_expr_stmt(self):
         """解析表達式語句（expr 後面接 ;）"""
+        line = self.current_token.line
         expr = self.parse_expr()
         self.eat('SEMI')
-        line = self.current_token.line
         return ExprStmtNode(expr, line)
 
     # ─── 表達式（依優先級由低到高） ────────────────────────────────────────────
@@ -362,15 +360,17 @@ class Parser:
         賦值：target = expr | target += expr | ...
         先嘗試解析右邊，如果遇到賦值運算子才確認是賦值。
         """
+        #line = self.current_token.line
         left = self.parse_ternary()
 
         ASSIGN_OPS = ('ASSIGN', 'ADD_ASSIGN', 'SUB_ASSIGN',
                       'MUL_ASSIGN', 'DIV_ASSIGN', 'MOD_ASSIGN')
         if self.current_token.type in ASSIGN_OPS:
+            line = self.current_token.line
             op = self.current_token.value
             self.advance()
             value = self.parse_assignment()  # 右結合：遞迴自己
-            return AssignNode(left, op, value)
+            return AssignNode(left, op, value, line)
 
         return left
 

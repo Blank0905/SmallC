@@ -73,10 +73,11 @@ class UnaryOpNode(ASTNode):
 
 class AssignNode(ASTNode):
     """賦值，例如 x = 5、x += 1"""
-    def __init__(self, target, op, value):
+    def __init__(self, target, op, value, line):
         self.target = target    # ASTNode（左值：VarNode、ArrayIndexNode 等）
         self.op = op            # str，例如 '='、'+='
         self.value = value      # ASTNode
+        self.line = line
 
 class TernaryNode(ASTNode):
     """三元運算，例如 a ? b : c"""
