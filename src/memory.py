@@ -98,12 +98,12 @@ class Memory:
 
     def read_string(self, addr):
         """從指定位址讀取 C 字串，直到遇到 \0"""
-        chars = []
         curr = addr
+        raw_bytes = bytearray()
         while True:
             c = self.read_char(curr)
             if c == 0:
                 break
-            chars.append(chr(c if c >= 0 else c + 256))
+            raw_bytes.append(c if c >= 0 else c + 256)
             curr += 1
-        return "".join(chars)
+        return raw_bytes.decode('utf-8', errors='replace')
