@@ -375,6 +375,40 @@ class Interpreter:
                 if symbol.data_type == 'char*':
                     return self.memory.read_char(addr)
             return self.memory.read_int(addr)  # 預設讀 int
+        elif node.op == '++':
+            if isinstance(node.operand, VarNode):
+                symbol = self.symtable.lookup(node.operand.name)
+                addr = symbol.address
+                new_value = value + 1
+                if symbol.data_type == 'int':
+                    self.memory.write_int(addr, new_value)
+                    if node.prefix:
+                        return new_value
+                    else:
+                        return value
+                elif symbol.data_type == 'char':
+                    self.memory.write_char(addr, new_value)
+                    if node.prefix:
+                        return new_value
+                    else:
+                        return value
+        elif node.op == '--':
+            if isinstance(node.operand, VarNode):
+                symbol = self.symtable.lookup(node.operand.name)
+                addr = symbol.address
+                new_value = value - 1
+                if symbol.data_type == 'int':
+                    self.memory.write_int(addr, new_value)
+                    if node.prefix:
+                        return new_value
+                    else:
+                        return value
+                elif symbol.data_type == 'char':
+                    self.memory.write_char(addr, new_value)
+                    if node.prefix:
+                        return new_value
+                    else:
+                        return value
         else:
             raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
 
