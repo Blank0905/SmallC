@@ -12,6 +12,8 @@ class BuiltinManager:
             'putchar': self.builtin_putchar,
             'printf':self.builtin_printf,
             'puts':self.builtin_puts,
+            'getchar':self.builtin_getchar,
+            'scanf':self.builtin_scanf,
 
             # 字串處理函式
             'strlen':self.builtin_strlen,
@@ -35,6 +37,7 @@ class BuiltinManager:
             'sizeof_char': self.builtin_sizeof_char,
             'atoi':self.builtin_atoi,
             'itoa':self.builtin_itoa,
+            'exit':self.builtin_exit,
 
         }
     def is_builtin(self, name):
@@ -91,6 +94,58 @@ class BuiltinManager:
         s = self.memory.read_string(addr)
         print(s)
         return 0
+    
+    def builtin_getchar(self):
+        char = sys.stdin.read(1)
+        if not char:
+            return -1
+        return ord(char)
+    
+    def builtin_scanf(self, format_addr, *args):
+        #因為printf還支援%s,%x所以這邊也加上
+        fmt = self.memory.read_string(format_addr)
+        try:
+            user_input = input().split()
+        except EOFError:
+            return -1
+        
+        arg_idx = 0
+        count = 0
+        pos = 0
+
+        while pos < len(fmt) and arg_idx < len(args) and count < len(user_input):
+            if fmt[pos] == '%' and pos + 1 < len(fmt):
+                specifier = fmt[pos+1]
+                target_addr = args[arg_idx]
+                current_val = user_input[count]
+
+                if specifier == 'd':
+                    #(bytes = 4)
+                    val = int(user_input[count])
+                    self.memory.write_int(target_addr, val)
+                    count +=1
+                    arg_idx +=1
+                elif specifier == 'c':
+                    #(byte = 1)
+                    val = ord(user_input[count][0])
+                    self.memory.write_char(target_addr, val)
+                    count +=1
+                    arg_idx +=1
+                elif specifier == 's':
+                    for i, char in enumerate(current_val):
+                        self.memory.write_char(target_addr + i, ord(char))
+                    self.memory.write_char(target_addr + len(current_val), 0)
+                    count += 1
+                    arg_idx +=1
+                elif specifier == 'x':
+                    self.memory.write_int(target_addr, int(current_val, 16))
+                    count +=1
+                    arg_idx+=1
+
+                pos +=2
+            else:
+                pos +=1
+        return count
     
     # ─── 字串處理函式 ────────────────────────────────────────────────────────
     def builtin_strlen(self, addr):
@@ -179,3 +234,7 @@ class BuiltinManager:
             self.memory.write_char(addr + i, ord(s[i]))  # ord() 轉成 ASCII 數值
         self.memory.write_char(addr + len(s), '\0')  # 補 0
         return addr
+    
+    def builtin_exit(self, code):
+        print(f"\nProgram exited via exit({code})")
+        raise SystemExit(code)

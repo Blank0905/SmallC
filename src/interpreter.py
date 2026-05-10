@@ -370,6 +370,8 @@ class Interpreter:
         elif node.op == '*':
             addr = value  # operand 算出來就是記憶體位址
             # 判斷要讀 int 還是 char
+            if addr == 0: #指標沒指向任何東西 取值會報錯
+                raise RuntimeError("Runtime Error: null pointer dereference.") 
             if isinstance(node.operand, VarNode):
                 symbol = self.symtable.lookup(node.operand.name)
                 if symbol.data_type == 'char*':
@@ -546,6 +548,28 @@ class Interpreter:
             if node.update is not None:
                 # self._trace(node) # 更新部分是否追蹤可再商榷，目前通常追蹤一次 for 即可
                 self.visit(node.update)
+
+    def visit_SwitchNode(self, node):
+        val = self.visit(node.expr) # 先算出 switch(x) 裡面 x 的值
+        found = False
+
+        try:
+            # 遍歷所有 case 分支
+            for case_val, block in node.cases:
+                # 如果找到匹配的 case，或者已經在『穿透』(Fall-through) 狀態
+                if val == case_val or found:
+                    found = True
+                    self.visit(block)
+            
+            # 如果跑完所有 case 都沒匹配到，且有 default 分支
+            if not found and node.default_stmt:
+                self.visit(node.default_stmt)
+                
+        except BreakException:
+            # 捕捉到 break，代表要跳出 switch 區塊，正常結束此 visit 函式
+            pass
+            
+        return None
 
 
 

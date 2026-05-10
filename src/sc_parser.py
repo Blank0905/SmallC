@@ -189,6 +189,8 @@ class Parser:
             return self.parse_var_decl()
         elif t == 'IF':
             return self.parse_if()
+        elif t == 'SWITCH':
+            return self.parse_switch()
         elif t == 'WHILE':
             return self.parse_while()
         elif t == 'DO':
@@ -345,6 +347,42 @@ class Parser:
         expr = self.parse_expr()
         self.eat('SEMI')
         return ExprStmtNode(expr, line)
+    
+    def parse_switch(self):
+        line = self.current_token.line
+        self.eat('SWITCH')
+        self.eat('LPAREN')
+        condition_expr = self.parse_expr()
+        self.eat('RPAREN')
+        self.eat('LBRACE')
+
+        cases = []
+        default_stmt = None
+        
+        while self.current_token.type != 'RBRACE':
+            if self.current_token.type =='CASE':
+                self.eat('CASE')
+                case_val = self.eat('INT_CONST').value
+                self.eat('COLON')
+
+                case_stmts = []
+                while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
+                    case_stmts.append(self.parse_statement())
+                cases.append((case_val, BlockNode(case_stmts)))
+            
+            elif self.current_token.type == 'DEFAULT':
+                self.eat('DEFAULT')
+                self.eat('COLON')
+                default_stmts = []
+                while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
+                    default_stmts.append(self.parse_statement())
+                default_stmt = BlockNode(default_stmts)
+            
+            else:
+                self.advance()
+
+        self.eat('RBRACE')
+        return SwitchNode(condition_expr, cases, default_stmt, line)
 
     # ─── 表達式（依優先級由低到高） ────────────────────────────────────────────
 
@@ -622,4 +660,12 @@ class Parser:
 
     def parse(self):
         """解析整個程式，回傳 ProgramNode"""
-        return self.parse_program()
+        declarations = []
+        while self.current_token.type != 'EOF':
+            # 如果目前是 int/char/void，走全域宣告 (變數或函式)
+            if self.is_type_keyword():
+                declarations.append(self.parse_top_level())
+            else:
+                # 否則，這是一條「全域即時執行語句」
+                declarations.append(self.parse_statement())
+        return ProgramNode(declarations)

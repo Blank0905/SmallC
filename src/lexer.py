@@ -33,7 +33,10 @@ class Lexer:
             'else': 'ELSE',
             'break': 'BREAK',
             'continue': 'CONTINUE',
-            'return': 'RETURN'
+            'return': 'RETURN',
+            'switch': 'SWITCH',
+            'case': 'CASE',
+            'default': 'DEFAULT'
         }
 
     def advance(self):
@@ -369,3 +372,4 @@ class Lexer:
             raise Exception(f'Lexer Error: Unknown character {self.current_char} at line {self.line}')
 
         return Token('EOF', None, self.line) # 結束符號
+

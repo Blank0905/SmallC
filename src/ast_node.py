@@ -169,3 +169,14 @@ class ProgramNode(ASTNode):
     """整個程式（最頂層節點），包含所有全域宣告與函式定義"""
     def __init__(self, declarations):
         self.declarations = declarations    # list of ASTNode
+
+class SwitchNode(ASTNode): #存switch的容器 
+    """ switch(x) {
+        case 1: do what
+        default: do what
+    }"""
+    def __init__(self, expr, cases, default_stmt, line):
+        self.expr = expr #ASTNode 運算式
+        self.cases = cases #執行語句
+        self.default_stmt = default_stmt #default
+        self.line = line #第幾行
