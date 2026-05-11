@@ -370,7 +370,7 @@ class Interpreter:
         elif node.op == '*':
             addr = value  # operand 算出來就是記憶體位址
             # 判斷要讀 int 還是 char
-            if addr == 0: #指標沒指向任何東西 取值會報錯
+            if addr == None: #指標沒指向任何東西 取值會報錯
                 raise RuntimeError("Runtime Error: null pointer dereference.") 
             if isinstance(node.operand, VarNode):
                 symbol = self.symtable.lookup(node.operand.name)
