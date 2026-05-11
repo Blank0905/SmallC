@@ -89,7 +89,12 @@ class Parser:
         """
         declarations = []
         while self.current_token.type != 'EOF':
-            declarations.append(self.parse_top_level())
+            # 如果目前是 int/char/void，走全域宣告 (變數或函式)
+            if self.is_type_keyword():
+                declarations.append(self.parse_top_level())
+            else:
+                # 否則，這是一條「全域即時執行語句」
+                declarations.append(self.parse_statement())
         return ProgramNode(declarations)
 
     def parse_top_level(self):
@@ -659,13 +664,5 @@ class Parser:
     # ─── 對外介面 ──────────────────────────────────────────────────────────────
 
     def parse(self):
-        """解析整個程式，回傳 ProgramNode"""
-        declarations = []
-        while self.current_token.type != 'EOF':
-            # 如果目前是 int/char/void，走全域宣告 (變數或函式)
-            if self.is_type_keyword():
-                declarations.append(self.parse_top_level())
-            else:
-                # 否則，這是一條「全域即時執行語句」
-                declarations.append(self.parse_statement())
-        return ProgramNode(declarations)
+        """parser 的對外入口，回傳整個程式的 AST"""
+        return self.parse_program()
