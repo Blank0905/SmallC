@@ -394,6 +394,9 @@ class Interpreter:
                         return new_value
                     else:
                         return value
+            #elif isinstance(node.operand, ArrayIndexNode):  # arr[0]++;
+
+
         elif node.op == '--':
             if isinstance(node.operand, VarNode):
                 symbol = self.symtable.lookup(node.operand.name)
