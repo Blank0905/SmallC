@@ -89,7 +89,7 @@ class Lexer:
         if self.current_char != "'":
             raise Exception(f"Lexer Error: Character not closed at line {self.line}")
         self.advance() # 跳過結尾 '
-        return Token('CHAR_CONST', val, self.line)
+        return Token('CHAR_CONST', ord(val), self.line)
     
     def _string(self):
         """處理字串常數 "..." 並支援跳脫序列"""

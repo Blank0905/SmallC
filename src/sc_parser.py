@@ -29,6 +29,9 @@ class Parser:
         self.tokens = tokens        # 完整 Token 列表（含 EOF）
         self.pos = 0
         self.current_token = self.tokens[0]
+        # 追蹤目前是否身處迴圈／switch 之中，用來檢查 break/continue 位置
+        self.loop_depth = 0
+        self.switch_depth = 0
 
     # ─── 基礎工具 ─────────────────────────────────────────────────────────────
 
@@ -206,11 +209,15 @@ class Parser:
             return self.parse_return()
         elif t == 'BREAK':
             line = self.current_token.line
+            if self.loop_depth == 0 and self.switch_depth == 0:
+                raise SyntaxError(f"Semantic Error: 'break' not in loop or switch at line {line}")
             self.advance()
             self.eat('SEMI')
             return BreakNode(line)
         elif t == 'CONTINUE':
             line = self.current_token.line
+            if self.loop_depth == 0:
+                raise SyntaxError(f"Semantic Error: 'continue' not in loop at line {line}")
             self.advance()
             self.eat('SEMI')
             return ContinueNode(line)
@@ -283,19 +290,27 @@ class Parser:
         self.eat('LPAREN')
         condition = self.parse_expr()
         self.eat('RPAREN')
-        body = self.parse_statement()      
+        self.loop_depth += 1
+        try:
+            body = self.parse_statement()
+        finally:
+            self.loop_depth -= 1
         return WhileNode(condition, body, line)
 
     def parse_do_while(self):
         """解析 do-while：do body while (cond);"""
         line = self.current_token.line
         self.eat('DO')
-        body = self.parse_statement()
+        self.loop_depth += 1
+        try:
+            body = self.parse_statement()
+        finally:
+            self.loop_depth -= 1
         self.eat('WHILE')
         self.eat('LPAREN')
         condition = self.parse_expr()
         self.eat('RPAREN')
-        self.eat('SEMI')       
+        self.eat('SEMI')
         return DoWhileNode(body, condition, line)
 
     def parse_for(self):
@@ -331,8 +346,12 @@ class Parser:
             update = self.parse_expr()
 
         self.eat('RPAREN')
-        body = self.parse_statement()
-        
+        self.loop_depth += 1
+        try:
+            body = self.parse_statement()
+        finally:
+            self.loop_depth -= 1
+
         return ForNode(init, condition, update, body, line)
 
     def parse_return(self):
@@ -363,28 +382,32 @@ class Parser:
 
         cases = []
         default_stmt = None
-        
-        while self.current_token.type != 'RBRACE':
-            if self.current_token.type =='CASE':
-                self.eat('CASE')
-                case_val = self.eat('INT_CONST').value
-                self.eat('COLON')
 
-                case_stmts = []
-                while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
-                    case_stmts.append(self.parse_statement())
-                cases.append((case_val, BlockNode(case_stmts)))
-            
-            elif self.current_token.type == 'DEFAULT':
-                self.eat('DEFAULT')
-                self.eat('COLON')
-                default_stmts = []
-                while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
-                    default_stmts.append(self.parse_statement())
-                default_stmt = BlockNode(default_stmts)
-            
-            else:
-                self.advance()
+        self.switch_depth += 1
+        try:
+            while self.current_token.type != 'RBRACE':
+                if self.current_token.type =='CASE':
+                    self.eat('CASE')
+                    case_val = self.eat('INT_CONST').value
+                    self.eat('COLON')
+
+                    case_stmts = []
+                    while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
+                        case_stmts.append(self.parse_statement())
+                    cases.append((case_val, BlockNode(case_stmts)))
+
+                elif self.current_token.type == 'DEFAULT':
+                    self.eat('DEFAULT')
+                    self.eat('COLON')
+                    default_stmts = []
+                    while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
+                        default_stmts.append(self.parse_statement())
+                    default_stmt = BlockNode(default_stmts)
+
+                else:
+                    self.advance()
+        finally:
+            self.switch_depth -= 1
 
         self.eat('RBRACE')
         return SwitchNode(condition_expr, cases, default_stmt, line)

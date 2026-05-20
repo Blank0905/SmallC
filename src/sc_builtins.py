@@ -211,7 +211,7 @@ class BuiltinManager:
     # ─── 記憶體與工具函數 ────────────────────────────────────────────────────────
     def builtin_memset(self, addr, value, size):
         for i in range(size):
-            self.memory.write_char(addr - i, value)
+            self.memory.write_char(addr + i, value)
 
     def builtin_sizeof_int(self):
         return 4

@@ -108,6 +108,12 @@ class Interpreter:
             func_symbol = self.symtable.lookup(node.name) # 去符號表找function名稱
             func_node = func_symbol.func_node
 
+            if len(func_node.params) != len(args_values):
+                raise RuntimeError(
+                    f"Semantic Error: function '{node.name}' expected "
+                    f"{len(func_node.params)} argument(s), got {len(args_values)}"
+                )
+
             # === 備份目前的區域變數狀態 ===
             saved_locals = self.symtable.locals.copy()
             saved_is_global = self.symtable.is_global_scope
@@ -243,6 +249,10 @@ class Interpreter:
         array_len = 0
         if is_array:
             array_len = self.visit(node.array_size) # 把中括號裡的表達式算出來 (例如 10)
+            if not isinstance(array_len, int) or array_len <= 0: # 檢查陣列長度是否合法
+                raise RuntimeError(
+                    f"Semantic Error: array '{node.name}' size must be a positive integer (got {array_len})"
+                )
 
         # 去符號表註冊此變數 (把算出來的長度傳進去)
         symbol = self.symtable.define_var(
@@ -275,7 +285,27 @@ class Interpreter:
 
     # ─── 運算式（Expressions） ────────────────────────────────────────────────────
 
+    def visit_TernaryNode(self, node):
+        """三元運算 cond ? a : b，依條件結果只計算其中一邊"""
+        if self.visit(node.condition):
+            return self.visit(node.then_expr)
+        return self.visit(node.else_expr)
+
+    def visit_CastNode(self, node):
+        """強制轉型 (int)x、(char)x、(int*)p、(char*)p"""
+        value = self.visit(node.expr)
+        target = self._type_name(node.type_node)
+        if target == 'char':
+            value = int(value)
+            return ((value + 128) % 256) - 128
+        if target == 'int':
+            value = int(value)
+            return ((value + 2**31) % 2**32) - 2**31
+        # 指標型別轉型：直接維持位址值（這個解譯器內就是整數）
+        return int(value)
+
     def visit_BinOpNode(self, node):
+        
         """碰到二元運算子 (例如加減乘除)"""
         left = self.visit(node.left)
 
@@ -297,7 +327,7 @@ class Interpreter:
         
         right = self.visit(node.right)
         
-        # 2. 根據運算子種類，執行真正的 Python 運算
+        # 根據運算子種類，執行真正的 Python 運算
         # （把 node.op.type 改成直接比對 node.op 字串）
         if node.op == '+':
             return left + right
@@ -308,11 +338,17 @@ class Interpreter:
         elif node.op == '/':
             if right == 0:
                 raise RuntimeError("Runtime Error: Division by zero")
-            return left // right   # C語言的整數除法是無條件捨去，所以用 //
+            # C 的整數除法朝 0 截斷，Python 的 // 朝 -∞ 取整，需自己處理
+            q = abs(left) // abs(right)
+            return -q if (left < 0) ^ (right < 0) else q
         elif node.op == '%':
             if right == 0:
                 raise RuntimeError("Runtime Error: Modulo by zero")
-            return left % right
+            # C 餘數符號跟被除數一致：a == (a/b)*b + a%b
+            q = abs(left) // abs(right)
+            if (left < 0) ^ (right < 0):
+                q = -q
+            return left - q * right
         elif node.op == '&':
             return left & right
         elif node.op == '|':
@@ -460,11 +496,21 @@ class Interpreter:
             elif data_type == 'char':
                 old_val = self.memory.read_char(addr)
 
-            if node.op == '+=':right_val = old_val + right_val
+            if node.op == '+=': right_val = old_val + right_val
             elif node.op == '-=': right_val = old_val - right_val
             elif node.op == '*=': right_val = old_val * right_val
-            elif node.op == '/=': right_val = old_val // right_val
-            elif node.op == '%=': right_val = old_val % right_val
+            elif node.op == '/=':
+                if right_val == 0:
+                    raise RuntimeError("Runtime Error: Division by zero")
+                q = abs(old_val) // abs(right_val)
+                right_val = -q if (old_val < 0) ^ (right_val < 0) else q
+            elif node.op == '%=':
+                if right_val == 0:
+                    raise RuntimeError("Runtime Error: Modulo by zero")
+                q = abs(old_val) // abs(right_val)
+                if (old_val < 0) ^ (right_val < 0):
+                    q = -q
+                right_val = old_val - q * right_val
 
         if data_type == 'int':
             self.memory.write_int(addr, right_val)
