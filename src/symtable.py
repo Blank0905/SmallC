@@ -109,3 +109,12 @@ class SymbolTable:
         if name in self.globals:
             return self.globals[name]
         raise Exception(f"Semantic Error: Undefined symbol '{name}'")
+
+    def lookup_func(self, name):
+        """尋找函式（只查全域，跳過同名的區域變數）"""
+        if name in self.globals:
+            symbol = self.globals[name]
+            if symbol.sym_type == 'FUNC':
+                return symbol
+            raise Exception(f"Semantic Error: '{name}' is not a function")
+        raise Exception(f"Semantic Error: Undefined function '{name}'")

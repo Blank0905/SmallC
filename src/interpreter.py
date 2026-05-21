@@ -82,13 +82,11 @@ class Interpreter:
 
         # 全部定義都掃描完之後，看有沒有 main 函式，有的話就自動啟動！
         try:
-            main_sym = self.symtable.lookup("main")
-            if main_sym.sym_type == 'FUNC':               
-                # 假裝我們在寫程式呼叫 main()
-                main_call = FuncCallNode("main", [], 0)
-                return self.visit_FuncCallNode(main_call)
+            self.symtable.lookup_func("main")
+            main_call = FuncCallNode("main", [], 0)
+            return self.visit_FuncCallNode(main_call)
         except Exception as e:
-            if "not found" not in str(e).lower():
+            if "undefined function" not in str(e).lower():
                 print(f"[*] 執行 main 時發生未預期錯誤: {e}")        
         return result
 
@@ -105,7 +103,7 @@ class Interpreter:
             # 直接交給 BuiltinManager 去執行，並回傳它執行的結果！
             return self.builtins.call(node.name, args_values)
         else:
-            func_symbol = self.symtable.lookup(node.name) # 去符號表找function名稱
+            func_symbol = self.symtable.lookup_func(node.name) # 去符號表找function名稱
             func_node = func_symbol.func_node
 
             if len(func_node.params) != len(args_values):
