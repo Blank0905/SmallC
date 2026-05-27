@@ -180,3 +180,11 @@ class SwitchNode(ASTNode): #存switch的容器
         self.cases = cases #執行語句
         self.default_stmt = default_stmt #default
         self.line = line #第幾行
+
+class InitListNode(ASTNode):
+    """
+    用來表示大括號初始化列表，例如 {1, 2, 3, 4, 5}
+    """
+    def __init__(self, expressions, line):
+        self.expressions = expressions  # 存放內部節點的串列，例如 [IntLiteralNode(1), ...]
+        self.line = line
