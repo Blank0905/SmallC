@@ -255,12 +255,36 @@ class Parser:
             self.eat('RBRACK')
 
         if self.current_token.type == 'ASSIGN':
-            # 初始值：int x = 5
+            # 初始值：等號右邊
             self.eat('ASSIGN')
-            init_expr = self.parse_expr()
+            
+            # --- 關鍵修改：支援大括號陣列初始化 ---
+            if self.current_token.type == 'LBRACE':
+                init_expr = self.parse_init_list()
+            else:
+                # 原本的普通單一值表達式
+                init_expr = self.parse_expr()
 
         self.eat('SEMI')
         return VarDeclNode(type_node, name, line, init_expr, array_size)
+    
+    def parse_init_list(self):
+        """
+        專門解析 {1, 2, 3, ...} 結構的方法
+        """
+        line = self.current_token.line
+        self.eat('LBRACE')
+        exprs = []
+        
+        # 如果不是立刻遇到右大括號，代表裡面有東西
+        if self.current_token.type != 'RBRACE':
+            exprs.append(self.parse_expr())
+            while self.current_token.type == 'COMMA':
+                self.eat('COMMA')
+                exprs.append(self.parse_expr())
+                
+        self.eat('RBRACE')
+        return InitListNode(exprs, line)
 
     # ─── 控制流程語句 ──────────────────────────────────────────────────────────
 
@@ -386,16 +410,30 @@ class Parser:
         self.switch_depth += 1
         try:
             while self.current_token.type != 'RBRACE':
-                if self.current_token.type =='CASE':
+                if self.current_token.type == 'CASE':
                     self.eat('CASE')
-                    case_val = self.eat('INT_CONST').value
+                    
+                    # --- 關鍵修復：支援 負數、字元 與 正整數 標籤 ---
+                    if self.current_token.type == 'MINUS':
+                        # 情況 A：處理負數，例如 case -5:
+                        self.eat('MINUS')
+                        case_val = -self.eat('INT_CONST').value
+                    elif self.current_token.type == 'CHAR_CONST':
+                        # 情況 B：處理字元，例如 case 'a':
+                        # 在你的系統中，字元本質上就是它的 ASCII 整數值
+                        case_val = self.current_token.value
+                        self.eat('CHAR_CONST')
+                    else:
+                        # 情況 C：標準正整數，例如 case 10:
+                        case_val = self.eat('INT_CONST').value
+                        
                     self.eat('COLON')
 
                     case_stmts = []
                     while self.current_token.type not in ('CASE', 'DEFAULT', 'RBRACE'):
                         case_stmts.append(self.parse_statement())
                     cases.append((case_val, BlockNode(case_stmts)))
-
+                    
                 elif self.current_token.type == 'DEFAULT':
                     self.eat('DEFAULT')
                     self.eat('COLON')

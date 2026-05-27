@@ -48,6 +48,20 @@ class Interpreter:
         if symbol.data_type.endswith('*'):
             return symbol.data_type[:-1]
         return symbol.data_type
+    
+    def _get_node_type(self, node):
+        """輔助函式：推導 AST 節點運算後的資料型別"""
+        if isinstance(node, VarNode):
+            return self.symtable.lookup(node.name).data_type
+        if isinstance(node, UnaryOpNode) and node.op == '&':
+            return self._get_node_type(node.operand) + "*"
+        if isinstance(node, UnaryOpNode) and node.op == '*':
+            t = self._get_node_type(node.operand)
+            return t[:-1] if t.endswith('*') else t
+        if isinstance(node, ArrayIndexNode):
+            symbol = self.symtable.lookup(node.array.name)
+            return self._array_element_type(symbol)
+        return 'int'
 
     def _visit_control_body(self, node):
         self.memory.push_frame()
@@ -230,22 +244,22 @@ class Interpreter:
     # ─── 宣告（Declarations） ─────────────────────────────────────────────────────
 
     def visit_VarDeclNode(self, node):
-        """處理變數宣告，例如: int x = 1 + 2 * 3; 或 int arr[10];"""
+        """處理變數宣告，包含陣列的大括號初始化"""
         self._trace(node)
 
-        data_type = self._type_name(node.type_node) # 拿出他的型別
+        data_type = self._type_name(node.type_node)
 
-        # 如果是陣列，要先算出陣列長度
+        # 檢查是否為陣列
         is_array = (node.array_size is not None)
         array_len = 0
         if is_array:
-            array_len = self.visit(node.array_size) # 把中括號裡的表達式算出來 (例如 10)
-            if not isinstance(array_len, int) or array_len <= 0: # 檢查陣列長度是否合法
+            array_len = self.visit(node.array_size)
+            if not isinstance(array_len, int) or array_len <= 0:
                 raise RuntimeError(
                     f"Semantic Error: array '{node.name}' size must be a positive integer (got {array_len})"
                 )
 
-        # 去符號表註冊此變數 (把算出來的長度傳進去)
+        # 去符號表註冊此變數
         symbol = self.symtable.define_var(
             name=node.name, 
             data_type=data_type, 
@@ -253,14 +267,35 @@ class Interpreter:
             array_len=array_len
         )
 
-        # 如果宣告時有給初始值 (init_expr)
+        # 如果宣告時有給初始值
         if node.init_expr is not None:
-            value = self.visit(node.init_expr) # 這邊會拿到等號右邊的值
-
-            if data_type == 'int': #根據變數宣告的型別來寫入值
-                self.memory.write_int(symbol.address, value)
-            elif data_type == 'char':
-                self.memory.write_char(symbol.address, value)
+            # 情況 A：如果是遇到我們新加的大括號初始化列表 InitListNode
+            if isinstance(node.init_expr, InitListNode):
+                if not is_array:
+                    raise RuntimeError(f"Semantic Error: Initializer list cannot be used on non-array variable '{node.name}'")
+                
+                # 遍歷大括號裡的每一個元素，把它算出來並依序寫入陣列對應的記憶體位置
+                for i, expr in enumerate(node.init_expr.expressions):
+                    if i >= array_len:
+                        # 預防填入的數量大於宣告的陣列長度
+                        break 
+                    
+                    val = self.visit(expr)
+                    element_type = self._array_element_type(symbol)
+                    
+                    if element_type == 'int':
+                        self.memory.write_int(symbol.address + i * 4, val)
+                    elif element_type == 'char':
+                        self.memory.write_char(symbol.address + i * 1, val)
+            
+            # 情況 B：原本的普通單一變數初始化（例如 int x = 5;）
+            else:
+                value = self.visit(node.init_expr)
+                if data_type == 'int':
+                    self.memory.write_int(symbol.address, value)
+                elif data_type == 'char':
+                    self.memory.write_char(symbol.address, value)
+                    
         return None
 
     def visit_FuncDefNode(self, node):
@@ -318,11 +353,29 @@ class Interpreter:
         
         right = self.visit(node.right)
         
-        # 根據運算子種類，執行真正的 Python 運算
-        # （把 node.op.type 改成直接比對 node.op 字串）
+        left_type = self._get_node_type(node.left)
+        right_type = self._get_node_type(node.right)
+
         if node.op == '+':
+            # 指標 + 整數
+            if left_type.endswith('*'):
+                size = 4 if 'int' in left_type else 1
+                return left + (right * size)
+            # 整數 + 指標
+            if right_type.endswith('*'):
+                size = 4 if 'int' in right_type else 1
+                return (left * size) + right
             return left + right
+
         elif node.op == '-':
+            if left_type.endswith('*'):
+                # 指標 - 指標：計算距離
+                if right_type.endswith('*'):
+                    size = 4 if 'int' in left_type else 1
+                    return (left - right) // size
+                # 指標 - 整數
+                size = 4 if 'int' in left_type else 1
+                return left - (right * size)
             return left - right
         elif node.op == '*':
             return left * right
@@ -482,14 +535,24 @@ class Interpreter:
             raise NotImplementedError("目前只支援對普通變數、陣列與指標賦值")
         
         if node.op != '=': # 處理 +=, -=, *=, /=
-            if data_type == 'int':
-                old_val = self.memory.read_int(addr)
-            elif data_type == 'char':
+            # 修正 1：只要是指標或是 int，本質上都是從記憶體讀取一個 4-byte 的位址或數值
+            if data_type == 'char':
                 old_val = self.memory.read_char(addr)
+            else:
+                # 包含 'int', 'int*', 'char*'，都用 read_int 讀取
+                old_val = self.memory.read_int(addr)
 
-            if node.op == '+=': right_val = old_val + right_val
-            elif node.op == '-=': right_val = old_val - right_val
-            elif node.op == '*=': right_val = old_val * right_val
+            # 修正 2：處理指標複合運算的「比例因子 (Scaling Factor)」
+            scale = 1
+            if data_type.endswith('*'):
+                scale = 4 if data_type.startswith('int') else 1
+
+            if node.op == '+=': 
+                right_val = old_val + (right_val * scale) # 乘上型別大小
+            elif node.op == '-=': 
+                right_val = old_val - (right_val * scale) # 乘上型別大小
+            elif node.op == '*=': 
+                right_val = old_val * right_val
             elif node.op == '/=':
                 if right_val == 0:
                     raise RuntimeError("Runtime Error: Division by zero")
