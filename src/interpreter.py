@@ -52,7 +52,10 @@ class Interpreter:
     def _get_node_type(self, node):
         """輔助函式：推導 AST 節點運算後的資料型別"""
         if isinstance(node, VarNode):
-            return self.symtable.lookup(node.name).data_type
+            symbol = self.symtable.lookup(node.name)
+            if symbol.is_array:                       # 陣列名在算術中退化成指向元素的指標
+                return symbol.data_type + '*'
+            return symbol.data_type
         if isinstance(node, UnaryOpNode) and node.op == '&':
             return self._get_node_type(node.operand) + "*"
         if isinstance(node, UnaryOpNode) and node.op == '*':
@@ -474,6 +477,13 @@ class Interpreter:
                         return new_value
                     else:
                         return value
+                elif symbol.data_type in ('int*', 'char*'):  # 指標 ++：以元素為單位前進
+                    new_value = value + (4 if symbol.data_type == 'int*' else 1)
+                    self.memory.write_int(addr, new_value)
+                    if node.prefix:
+                        return new_value
+                    else:
+                        return value
             #elif isinstance(node.operand, ArrayIndexNode):  # arr[0]++;
 
 
@@ -490,6 +500,13 @@ class Interpreter:
                         return value
                 elif symbol.data_type == 'char':
                     self.memory.write_char(addr, new_value)
+                    if node.prefix:
+                        return new_value
+                    else:
+                        return value
+                elif symbol.data_type in ('int*', 'char*'):  # 指標 --：以元素為單位後退
+                    new_value = value - (4 if symbol.data_type == 'int*' else 1)
+                    self.memory.write_int(addr, new_value)
                     if node.prefix:
                         return new_value
                     else:

@@ -207,7 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 # 神人
-*.exe
 *.sc
 test/
-*.cpp
+CLAUDE.md
