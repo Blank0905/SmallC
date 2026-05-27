@@ -21,7 +21,6 @@ class Interpreter:
         self.memory = memory
         self.builtins = builtins
         self.string_pool = {}
-        self.in_block_scope = False  # 追蹤是否在 if/while/for 區塊內
 
     def visit(self, node):
         """
@@ -51,12 +50,13 @@ class Interpreter:
         return symbol.data_type
 
     def _visit_control_body(self, node):
-        old_flag = self.in_block_scope
-        self.in_block_scope = True
+        self.memory.push_frame()
+        self.symtable.enter_block()
         try:
             return self.visit(node)
         finally:
-            self.in_block_scope = old_flag
+            self.symtable.leave_block()
+            self.memory.pop_frame()
 
     def _trace(self, node):
         if self.trace == False:
@@ -82,15 +82,11 @@ class Interpreter:
 
         # 全部定義都掃描完之後，看有沒有 main 函式，有的話就自動啟動！
         try:
-            main_sym = self.symtable.lookup("main")
-            if main_sym.sym_type == 'FUNC':               
-                # 假裝我們在寫程式呼叫 main()
-                main_call = FuncCallNode("main", [], 0)
-                return self.visit_FuncCallNode(main_call)
-        except Exception as e:
-            if "not found" not in str(e).lower():
-                print(f"[*] 執行 main 時發生未預期錯誤: {e}")        
-        return result
+            self.symtable.lookup_func("main")
+        except Exception:
+            return result
+        main_call = FuncCallNode("main", [], 0)
+        return self.visit_FuncCallNode(main_call)
 
     def visit_FuncCallNode(self, node):
         """處理函式呼叫，例如 printf("Hello %d", a);"""
@@ -105,7 +101,7 @@ class Interpreter:
             # 直接交給 BuiltinManager 去執行，並回傳它執行的結果！
             return self.builtins.call(node.name, args_values)
         else:
-            func_symbol = self.symtable.lookup(node.name) # 去符號表找function名稱
+            func_symbol = self.symtable.lookup_func(node.name) # 去符號表找function名稱
             func_node = func_symbol.func_node
 
             if len(func_node.params) != len(args_values):
@@ -116,6 +112,7 @@ class Interpreter:
 
             # === 備份目前的區域變數狀態 ===
             saved_locals = self.symtable.locals.copy()
+            saved_block_scopes = list(self.symtable.block_scopes)
             saved_is_global = self.symtable.is_global_scope
 
             # 進入函式前：開啟全新記憶體框架與區域變數表
@@ -136,8 +133,6 @@ class Interpreter:
 
             # 開始執行函式區塊
             ret_val = 0
-            old_block_flag = self.in_block_scope
-            self.in_block_scope = False  # 進入新函式，重置區塊旗標以允許開頭宣告
 
             try:
                 try:
@@ -146,13 +141,12 @@ class Interpreter:
                     # 接住 return 回來的值
                     ret_val = e.value
             finally:
-                self.in_block_scope = old_block_flag # 恢復原本的旗標狀態
-                    
                 # 清空記憶體與符號表
                 self.symtable.leave_function()
                 self.memory.pop_frame()
 
                 self.symtable.locals = saved_locals
+                self.symtable.block_scopes = saved_block_scopes
                 self.symtable.is_global_scope = saved_is_global
             
             return ret_val
@@ -238,9 +232,6 @@ class Interpreter:
     def visit_VarDeclNode(self, node):
         """處理變數宣告，例如: int x = 1 + 2 * 3; 或 int arr[10];"""
         self._trace(node)
-        # Small-C 不允許在 if/while/for 區塊內宣告變數
-        if self.in_block_scope:
-            raise RuntimeError(f"Semantic Error: Small-C 不支援在控制流區塊內宣告變數 '{node.name}'，請將宣告移至函式開頭")
 
         data_type = self._type_name(node.type_node) # 拿出他的型別
 

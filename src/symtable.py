@@ -20,32 +20,43 @@ class Symbol:
 class SymbolTable:
     """
     符號表與作用域管理器
-    依照 Small-C 規定：
-    - 只有「全域」與「函式區域」兩層作用域。
-    - 不支援 `if` 或 `while` 內部的區塊變數宣告。
+    支援全域、函式區域，以及控制流區塊內的暫時作用域。
     """
     
     def __init__(self, memory):
         self.memory = memory
         self.globals = {}   # 全域符號表 (name -> Symbol)
         self.locals = {}    # 區域符號表 (name -> Symbol)
+        self.block_scopes = []  # 控制流區塊作用域，由外到內排列
         self.is_global_scope = True  # 目前是否在全域
 
     def reset(self):
         """重置符號表（用於 REPL 的 NEW 指令）"""
         self.globals.clear()
         self.locals.clear()
+        self.block_scopes.clear()
         self.is_global_scope = True
 
     def enter_function(self):
         """進入函式，開啟新的區域作用域"""
         self.locals.clear()
+        self.block_scopes.clear()
         self.is_global_scope = False
 
     def leave_function(self):
         """離開函式，清空區域作用域並回到全域"""
         self.locals.clear()
+        self.block_scopes.clear()
         self.is_global_scope = True
+
+    def enter_block(self):
+        """進入控制流區塊，讓其中宣告的變數僅於該次區塊有效。"""
+        self.block_scopes.append({})
+
+    def leave_block(self):
+        """離開目前控制流區塊。"""
+        if self.block_scopes:
+            self.block_scopes.pop()
 
     def _get_type_size(self, data_type):
         """取得資料型別的大小 (bytes)"""
@@ -60,7 +71,10 @@ class SymbolTable:
 
     def define_var(self, name, data_type, is_array=False, array_len=0):
         """宣告變數，自動分配記憶體並記錄在符號表中"""
-        scope_dict = self.globals if self.is_global_scope else self.locals
+        if self.block_scopes:
+            scope_dict = self.block_scopes[-1]
+        else:
+            scope_dict = self.globals if self.is_global_scope else self.locals
         
         if name in scope_dict:
             raise Exception(f"Semantic Error: Redefinition of variable '{name}'")
@@ -70,7 +84,8 @@ class SymbolTable:
         total_size = element_size * array_len if is_array else element_size
 
         # 呼叫 Memory 分配空間
-        if self.is_global_scope:
+        is_global_var = self.is_global_scope and not self.block_scopes
+        if is_global_var:
             addr = self.memory.alloc_global(total_size)
         else:
             addr = self.memory.alloc_local(total_size)
@@ -80,7 +95,7 @@ class SymbolTable:
             sym_type='VAR', 
             data_type=data_type, 
             address=addr, 
-            is_global=self.is_global_scope,
+            is_global=is_global_var,
             is_array=is_array,
             array_len=array_len
         )
@@ -104,8 +119,20 @@ class SymbolTable:
 
     def lookup(self, name):
         """尋找變數或函式（先找區域，再找全域）"""
+        for scope in reversed(self.block_scopes):
+            if name in scope:
+                return scope[name]
         if not self.is_global_scope and name in self.locals:
             return self.locals[name]
         if name in self.globals:
             return self.globals[name]
         raise Exception(f"Semantic Error: Undefined symbol '{name}'")
+
+    def lookup_func(self, name):
+        """尋找函式（只查全域，跳過同名的區域變數）"""
+        if name in self.globals:
+            symbol = self.globals[name]
+            if symbol.sym_type == 'FUNC':
+                return symbol
+            raise Exception(f"Semantic Error: '{name}' is not a function")
+        raise Exception(f"Semantic Error: Undefined function '{name}'")
