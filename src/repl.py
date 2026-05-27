@@ -13,10 +13,10 @@ from symtable import SymbolTable
 class LiveREPL:
     def __init__(self):
         self.trace = False
-        self.pending_lines = []
-        self.code_buffer = []
-        self.is_dirty = False
-        self._reset_runtime()
+        self.pending_lines = [] # 多行輸入暫存區(例如還沒收完一整個 function)
+        self.code_buffer = []   # 程式碼緩衝區
+        self.is_dirty = False   # 是否有未存檔修改
+        self._reset_runtime()   # 建立持續性 runtime
 
     def _reset_runtime(self):
         self.mem = Memory()
