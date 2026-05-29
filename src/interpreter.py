@@ -62,9 +62,62 @@ class Interpreter:
             t = self._get_node_type(node.operand)
             return t[:-1] if t.endswith('*') else t
         if isinstance(node, ArrayIndexNode):
-            symbol = self.symtable.lookup(node.array.name)
-            return self._array_element_type(symbol)
+            # 陣列索引的結果型別 = 基底指標剝掉一層 *（基底不一定是具名陣列）
+            base_type = self._get_node_type(node.array)
+            return base_type[:-1] if base_type.endswith('*') else base_type
+        if isinstance(node, CastNode):
+            return self._type_name(node.type_node)
+        if isinstance(node, BinOpNode):
+            # 指標算術的結果型別跟著指標那一側（例如 p + 1 仍是指標）
+            left_type = self._get_node_type(node.left)
+            if left_type.endswith('*'):
+                return left_type
+            right_type = self._get_node_type(node.right)
+            if right_type.endswith('*'):
+                return right_type
+            return 'int'
         return 'int'
+
+    def _read_typed(self, addr, data_type):
+        """依型別從記憶體讀值：char 讀 1 byte，其餘（int / 指標）讀 4 bytes"""
+        if data_type == 'char':
+            return self.memory.read_char(addr)
+        return self.memory.read_int(addr)
+
+    def _write_typed(self, addr, data_type, value):
+        """依型別把值寫入記憶體"""
+        if data_type == 'char':
+            self.memory.write_char(addr, value)
+        else:
+            self.memory.write_int(addr, value)
+
+    def _resolve_lvalue(self, node):
+        """算出可賦值節點 (lvalue) 的記憶體位址與資料型別，回傳 (addr, data_type)。
+        支援：普通變數、陣列索引 arr[i]、指標解參考 *expr。"""
+        if isinstance(node, VarNode):
+            symbol = self.symtable.lookup(node.name)
+            return symbol.address, symbol.data_type
+        if isinstance(node, ArrayIndexNode):
+            base_addr = self.visit(node.array)
+            index = self.visit(node.index)
+            data_type = self._get_node_type(node)
+            # 只有基底是具名陣列時才有長度可做邊界檢查
+            if isinstance(node.array, VarNode):
+                symbol = self.symtable.lookup(node.array.name)
+                if symbol.is_array and (index < 0 or index >= symbol.array_len):
+                    raise RuntimeError(
+                        f"Runtime Error: array index out of bounds (index {index}, size {symbol.array_len})"
+                    )
+            size = 4 if data_type == 'int' else 1
+            return base_addr + index * size, data_type
+        if isinstance(node, UnaryOpNode) and node.op == '*':
+            addr = self.visit(node.operand)
+            if addr == 0: # 位址 0 保留給 NULL，寫入空指標即為空指標存取
+                raise RuntimeError("Runtime Error: null pointer dereference.")
+            ptr_type = self._get_node_type(node.operand)
+            data_type = ptr_type[:-1] if ptr_type.endswith('*') else ptr_type
+            return addr, data_type
+        raise RuntimeError("Runtime Error: invalid lvalue (此運算式無法取得位址)")
 
     def _visit_control_body(self, node):
         self.memory.push_frame()
@@ -219,30 +272,10 @@ class Interpreter:
             return self.memory.read_int(symbol.address)
 
     def visit_ArrayIndexNode(self, node):
-        """處理陣列讀取，例如: arr[i]"""
-        # 取得陣列的起始位置 (base_addr)
-        base_addr = self.visit(node.array)
-        
-        # 算出索引值 (index)
-        index = self.visit(node.index)
-        
-        # 找出陣列元素的型別 (要知道是 int 還是 char，才能決定讀幾個 bytes)
-        symbol = self.symtable.lookup(node.array.name)
-        data_type = self._array_element_type(symbol)
-
-        # 邊界檢查
-        if symbol.is_array and (index < 0 or index >= symbol.array_len):
-            raise RuntimeError(f"Runtime Error: array index out of bounds. (index {index}, size {symbol.array_len})")
-            
-        # 根據型別，計算實際記憶體位置並讀取
-        if data_type == 'int':
-            # int 佔 4 個 bytes
-            target_addr = base_addr + index * 4
-            return self.memory.read_int(target_addr)
-        elif data_type == 'char':
-            # char 佔 1 個 byte
-            target_addr = base_addr + index * 1
-            return self.memory.read_char(target_addr)
+        """處理陣列讀取，例如: arr[i]、(*p)[i]"""
+        # 透過 _resolve_lvalue 算出位址與元素型別（基底不限定是 VarNode）
+        addr, data_type = self._resolve_lvalue(node)
+        return self._read_typed(addr, data_type)
 
     # ─── 宣告（Declarations） ─────────────────────────────────────────────────────
 
@@ -439,6 +472,19 @@ class Interpreter:
             else:
                 raise RuntimeError("Runtime Error: Cannot take address of non-lvalue")
 
+        # ++ / -- 需要寫回 lvalue：先解析位址，避免重複求值 operand 造成副作用
+        # （同時支援 arr[0]++、(*p)++ 等非 VarNode 的 lvalue）
+        if node.op in ('++', '--'):
+            addr, data_type = self._resolve_lvalue(node.operand)
+            old_value = self._read_typed(addr, data_type)
+            # 指標以元素為單位前進/後退，int* 走 4、char* 走 1，一般數值走 1
+            step = 4 if data_type == 'int*' else 1
+            if node.op == '--':
+                step = -step
+            new_value = old_value + step
+            self._write_typed(addr, data_type, new_value)
+            return new_value if node.prefix else old_value
+
         # 其他運算子都需要先算出 operand 的值
         value = self.visit(node.operand)
 
@@ -452,65 +498,12 @@ class Interpreter:
             return ~value
         elif node.op == '*':
             addr = value  # operand 算出來就是記憶體位址
-            # 判斷要讀 int 還是 char
-            if addr == None: #指標沒指向任何東西 取值會報錯
-                raise RuntimeError("Runtime Error: null pointer dereference.") 
-            if isinstance(node.operand, VarNode):
-                symbol = self.symtable.lookup(node.operand.name)
-                if symbol.data_type == 'char*':
-                    return self.memory.read_char(addr)
-            return self.memory.read_int(addr)  # 預設讀 int
-        elif node.op == '++':
-            if isinstance(node.operand, VarNode):
-                symbol = self.symtable.lookup(node.operand.name)
-                addr = symbol.address
-                new_value = value + 1
-                if symbol.data_type == 'int':
-                    self.memory.write_int(addr, new_value)
-                    if node.prefix:
-                        return new_value
-                    else:
-                        return value
-                elif symbol.data_type == 'char':
-                    self.memory.write_char(addr, new_value)
-                    if node.prefix:
-                        return new_value
-                    else:
-                        return value
-                elif symbol.data_type in ('int*', 'char*'):  # 指標 ++：以元素為單位前進
-                    new_value = value + (4 if symbol.data_type == 'int*' else 1)
-                    self.memory.write_int(addr, new_value)
-                    if node.prefix:
-                        return new_value
-                    else:
-                        return value
-            #elif isinstance(node.operand, ArrayIndexNode):  # arr[0]++;
-
-
-        elif node.op == '--':
-            if isinstance(node.operand, VarNode):
-                symbol = self.symtable.lookup(node.operand.name)
-                addr = symbol.address
-                new_value = value - 1
-                if symbol.data_type == 'int':
-                    self.memory.write_int(addr, new_value)
-                    if node.prefix:
-                        return new_value
-                    else:
-                        return value
-                elif symbol.data_type == 'char':
-                    self.memory.write_char(addr, new_value)
-                    if node.prefix:
-                        return new_value
-                    else:
-                        return value
-                elif symbol.data_type in ('int*', 'char*'):  # 指標 --：以元素為單位後退
-                    new_value = value - (4 if symbol.data_type == 'int*' else 1)
-                    self.memory.write_int(addr, new_value)
-                    if node.prefix:
-                        return new_value
-                    else:
-                        return value
+            if addr == 0: # 位址 0 保留給 NULL，解參考即為空指標存取
+                raise RuntimeError("Runtime Error: null pointer dereference.")
+            # 用型別推導決定讀幾個 bytes，支援 *(p+1)、*(char*)p 等運算式
+            ptr_type = self._get_node_type(node.operand)
+            data_type = ptr_type[:-1] if ptr_type.endswith('*') else ptr_type
+            return self._read_typed(addr, data_type)
         else:
             raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
 
@@ -519,56 +512,22 @@ class Interpreter:
 
         right_val = self.visit(node.value) # 把等號右邊的值從node裡面讀出來
 
-        if isinstance(node.target, VarNode): # 看左邊這個變數是不是VarNode
-            symbol = self.symtable.lookup(node.target.name)
-            addr = symbol.address
-            data_type = symbol.data_type
-        elif isinstance(node.target, ArrayIndexNode): # 看左邊這個變數是不是ArrayIndexNode
-            base_addr = self.visit(node.target.array) # 例如拿到 arr 的開頭位址
-            index = self.visit(node.target.index)     # 拿到中括號裡的數字
-            
-            # 從符號表找出這是 int 還是 char 陣列
-            symbol = self.symtable.lookup(node.target.array.name)
-            data_type = self._array_element_type(symbol)
+        # 解析左邊 lvalue 的位址與型別（支援變數、陣列索引 arr[i]、指標解參考 *expr）
+        addr, data_type = self._resolve_lvalue(node.target)
 
-            # 邊界檢查
-            if symbol.is_array and (index < 0 or index >= symbol.array_len):
-                raise RuntimeError(f"Runtime Error: array index out of bounds (index {index}, size {symbol.array_len})")
-            
-            # 算出真正的記憶體位址
-            if data_type == 'int':
-                addr = base_addr + index * 4
-            elif data_type == 'char':
-                addr = base_addr + index * 1
-        elif isinstance(node.target, UnaryOpNode) and node.target.op == '*':  # *ptr = 99;
-            addr = self.visit(node.target.operand)  # 算出 ptr 裡面存的位址
-            # 判斷要寫 int 還是 char
-            data_type = 'int'
-            if isinstance(node.target.operand, VarNode):
-                symbol = self.symtable.lookup(node.target.operand.name)
-                data_type = symbol.data_type[:-1] if symbol.data_type.endswith('*') else symbol.data_type
-        
-        else:
-            raise NotImplementedError("目前只支援對普通變數、陣列與指標賦值")
-        
-        if node.op != '=': # 處理 +=, -=, *=, /=
-            # 修正 1：只要是指標或是 int，本質上都是從記憶體讀取一個 4-byte 的位址或數值
-            if data_type == 'char':
-                old_val = self.memory.read_char(addr)
-            else:
-                # 包含 'int', 'int*', 'char*'，都用 read_int 讀取
-                old_val = self.memory.read_int(addr)
+        if node.op != '=': # 處理 +=, -=, *=, /=, %=
+            old_val = self._read_typed(addr, data_type)
 
-            # 修正 2：處理指標複合運算的「比例因子 (Scaling Factor)」
+            # 處理指標複合運算的「比例因子 (Scaling Factor)」
             scale = 1
             if data_type.endswith('*'):
                 scale = 4 if data_type.startswith('int') else 1
 
-            if node.op == '+=': 
+            if node.op == '+=':
                 right_val = old_val + (right_val * scale) # 乘上型別大小
-            elif node.op == '-=': 
+            elif node.op == '-=':
                 right_val = old_val - (right_val * scale) # 乘上型別大小
-            elif node.op == '*=': 
+            elif node.op == '*=':
                 right_val = old_val * right_val
             elif node.op == '/=':
                 if right_val == 0:
@@ -583,13 +542,7 @@ class Interpreter:
                     q = -q
                 right_val = old_val - q * right_val
 
-        if data_type == 'int':
-            self.memory.write_int(addr, right_val)
-        elif data_type =='char':
-            self.memory.write_char(addr, right_val)
-        elif data_type in ('int*', 'char*'):  # 指標本質上就是 4-byte 整數（存位址）
-            self.memory.write_int(addr, right_val)
-
+        self._write_typed(addr, data_type, right_val)
         return right_val
 
     # ─── 語句（Statements） ────────────────────────────────────────────────────────

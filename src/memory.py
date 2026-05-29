@@ -17,14 +17,14 @@ class Memory:
         self.size = size_bytes
         self.memory = bytearray(size_bytes) #宣告一個65536byte的array
          
-        self.heap_ptr = 0           # 全域指標，從 0 開始往上長
+        self.heap_ptr = 4           # 全域指標，從 4 開始往上長（保留位址 0 給 NULL）
         self.stack_ptr = size_bytes # 堆疊指標，從尾巴往下長
         self.fp_stack = []          # 紀錄函式呼叫的 Frame Pointer (FP)
-    
+
     def reset(self):
         """重置記憶體（用於 REPL 的 NEW 指令）"""
         self.memory = bytearray(self.size)
-        self.heap_ptr = 0
+        self.heap_ptr = 4           # 同 __init__：保留位址 0 給 NULL
         self.stack_ptr = self.size
         self.fp_stack = []
 
