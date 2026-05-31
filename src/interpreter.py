@@ -324,13 +324,23 @@ class Interpreter:
                     elif element_type == 'char':
                         self.memory.write_char(symbol.address + i * 1, val)
             
-            # 情況 B：原本的普通單一變數初始化（例如 int x = 5;）
+            # 情況 B：char 陣列以字串字面初始化（例如 char str[6] = "hi";）
+            # 逐 byte 複製字串內容到 str，截斷至 array_len-1 並保留 null terminator
+            elif is_array and data_type == 'char' and isinstance(node.init_expr, StringLiteralNode):
+                src_addr = self.visit(node.init_expr)
+                i = 0
+                while i < array_len - 1:
+                    b = self.memory.read_char(src_addr + i)
+                    if b == 0:
+                        break
+                    self.memory.write_char(symbol.address + i, b)
+                    i += 1
+                self.memory.write_char(symbol.address + i, 0)  # 確保 null-terminated
+
+            # 情況 C：原本的普通單一變數初始化（例如 int x = 5; int *p = &x;）
             else:
                 value = self.visit(node.init_expr)
-                if data_type == 'int':
-                    self.memory.write_int(symbol.address, value)
-                elif data_type == 'char':
-                    self.memory.write_char(symbol.address, value)
+                self._write_typed(symbol.address, data_type, value)  # 涵蓋 int / char / int* / char*
                     
         return None
 

@@ -74,11 +74,11 @@ class BuiltinManager:
                     if specifier == 'd':
                         output += str(val)
                     elif specifier == 'c':
-                        output += chr(val)
+                        output += chr(val & 0xFF)            # 取低 8 bit，避免 signed char 為負時 chr() 崩潰
                     elif specifier == 's':
                         output += self.memory.read_string(val)
                     elif specifier == 'x':
-                        output += hex(val)[2:] # 把 Python 的 '0x...' 去掉 0x
+                        output += format(val & 0xFFFFFFFF, 'x')  # 以 unsigned 32-bit 印 hex，符合 C 的 %x 語意
                     else:
                         output += '%' + specifier # 遇到不認識的，就原樣印出
                 pos += 2
