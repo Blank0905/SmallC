@@ -48,6 +48,11 @@ class Interpreter:
         if symbol.data_type.endswith('*'):
             return symbol.data_type[:-1]
         return symbol.data_type
+
+    def _dereference_type(self, ptr_type):
+        if not ptr_type.endswith('*'):
+            raise RuntimeError(f"Semantic Error: cannot dereference non-pointer type '{ptr_type}'")
+        return ptr_type[:-1]
     
     def _get_node_type(self, node):
         """輔助函式：推導 AST 節點運算後的資料型別"""
@@ -60,7 +65,7 @@ class Interpreter:
             return self._get_node_type(node.operand) + "*"
         if isinstance(node, UnaryOpNode) and node.op == '*':
             t = self._get_node_type(node.operand)
-            return t[:-1] if t.endswith('*') else t
+            return self._dereference_type(t)
         if isinstance(node, ArrayIndexNode):
             # 陣列索引的結果型別 = 基底指標剝掉一層 *（基底不一定是具名陣列）
             base_type = self._get_node_type(node.array)
@@ -111,11 +116,11 @@ class Interpreter:
             size = 4 if data_type == 'int' else 1
             return base_addr + index * size, data_type
         if isinstance(node, UnaryOpNode) and node.op == '*':
+            ptr_type = self._get_node_type(node.operand)
+            data_type = self._dereference_type(ptr_type)
             addr = self.visit(node.operand)
             if addr == 0: # 位址 0 保留給 NULL，寫入空指標即為空指標存取
                 raise RuntimeError("Runtime Error: null pointer dereference.")
-            ptr_type = self._get_node_type(node.operand)
-            data_type = ptr_type[:-1] if ptr_type.endswith('*') else ptr_type
             return addr, data_type
         raise RuntimeError("Runtime Error: invalid lvalue (此運算式無法取得位址)")
 
@@ -508,12 +513,12 @@ class Interpreter:
         elif node.op == '~':
             return ~value
         elif node.op == '*':
+            ptr_type = self._get_node_type(node.operand)
+            data_type = self._dereference_type(ptr_type)
             addr = value  # operand 算出來就是記憶體位址
             if addr == 0: # 位址 0 保留給 NULL，解參考即為空指標存取
                 raise RuntimeError("Runtime Error: null pointer dereference.")
             # 用型別推導決定讀幾個 bytes，支援 *(p+1)、*(char*)p 等運算式
-            ptr_type = self._get_node_type(node.operand)
-            data_type = ptr_type[:-1] if ptr_type.endswith('*') else ptr_type
             return self._read_typed(addr, data_type)
         else:
             raise RuntimeError(f"Runtime Error: Unknown unary operator '{node.op}'")
