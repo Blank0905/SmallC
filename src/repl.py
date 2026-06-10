@@ -512,9 +512,9 @@ class LiveREPL:
         print("═" * 50)
 
     def _cmd_about(self):
-        print(">> Small-C Interactive Interpreter v1.0 (Live Mode)")
+        print(">> Small-C Interactive Interpreter v1.0")
         print(">> System Software Final Project, Spring 2026")
-        print("作者1, 2, 3")
+        print(">> 作者:B1329008 張智翔 、 B1329042 許家棟 、 B1329036 唐偉捷")
 
     def _confirm_quit(self):
         return self._confirm_discard_changes("quit")
@@ -589,7 +589,7 @@ class LiveREPL:
 ║  ███████║ ██║ ╚═╝ ██║ ██║  ██║ ███████╗ ███████╗   ╚██████╗     ║
 ║  ╚══════╝ ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚══════╝ ╚══════╝    ╚═════╝     ║
 ║                                                                 ║
-║ >> Small-C Interactive Interpreter v1.0 (Live Mode)             ║
+║ >> Small-C Interactive Interpreter v1.0                         ║
 ║ >> System Software Final Project, Spring 2026                   ║
 ╚═════════════════════════════════════════════════════════════════╝
         """
