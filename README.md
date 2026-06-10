@@ -86,11 +86,11 @@ sc> printf("5! = %d\n", factorial(5));
 用 `LOAD` 載入 `.sc` 檔（或用 `APPEND` 手動輸入）後，以 `RUN` 執行整個緩衝區：
 
 ```
-sc> LOAD ../bubble.sc
+sc> LOAD ../test_data/primes.sc
 sc> RUN
 ```
 
-根目錄附有多個範例程式：`bubble.sc`（氣泡排序）、`primes.sc`（質數）、`edge1.sc`~`edge3.sc`、`edge_ptr.sc` 等。
+`test_data/` 目錄附有多個範例程式：`primes.sc`（質數）、`edge1.sc`~`edge3.sc`、`edge_ptr.sc`、`test.sc` 等。
 
 ### 互動式 REPL 指令
 
@@ -137,15 +137,18 @@ SmallC/
 │   ├── lexer.py            # 詞法分析器（產生 token 串）
 │   ├── ast_node.py         # 抽象語法樹節點定義
 │   ├── sc_parser.py        # 遞迴下降剖析器
+│   ├── semantic_checker.py # 靜態語意檢查（供 CHECK 使用）
 │   ├── memory.py           # 模擬位元組定址記憶體（64KB）
 │   ├── symtable.py         # 符號表（全域／函式區域兩層作用域）
 │   ├── interpreter.py      # 樹狀走訪直譯器（含 TRACE）
 │   └── sc_builtins.py      # 23 個內建函式
-├── bubble.sc               # 範例：氣泡排序
-├── primes.sc               # 範例：質數
-├── edge1.sc ~ edge3.sc     # 邊界測試範例
-├── edge_ptr.sc             # 指標邊界測試
-├── examples.md             # 作業範例 1–18
+├── test_data/              # 範例 Small-C 程式
+│   ├── primes.sc           # 範例：質數
+│   ├── edge1.sc ~ edge3.sc # 邊界測試範例
+│   ├── edge_ptr.sc         # 指標邊界測試
+│   ├── test.sc             # 綜合測試範例
+│   └── examples.md         # 作業範例 1–18
+├── LICENSE                 # MIT 授權條款
 └── README.md
 ```
 
@@ -166,7 +169,14 @@ SmallC/
 | `preprocessor.py` | 展開 object-like `#define` 常數巨集（會跳過字串／字元／註解內容） |
 | `lexer.py` | 將原始碼轉為具型別的 token 串（字元常數在此即轉為 `ord()` 整數值） |
 | `sc_parser.py` | 以遞迴下降剖析建構 AST，每個運算子優先級一個方法 |
+| `semantic_checker.py` | `CHECK` 指令使用的靜態語意檢查，不執行程式 |
 | `memory.py` | 模擬 64KB 線性記憶體：全域變數由位址 0 往上長，區域變數由尾端往下長 |
 | `symtable.py` | 管理變數符號，僅全域與函式區域兩層作用域 |
 | `interpreter.py` | 以 Visitor 模式走訪 AST 執行語句，控制流程以 Python 例外實作，支援 TRACE |
 | `sc_builtins.py` | 實作全部 23 個內建函式（內建函式優先於使用者函式分派） |
+
+## 授權
+
+本專案採用 MIT 授權條款，詳見 [LICENSE](LICENSE)。
+
+作者：Blank0905、Boris642、JayTangu
