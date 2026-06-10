@@ -2,8 +2,9 @@ from ast_node import *
 
 class ReturnException(Exception):
     """用來模擬 C 語言 return 中斷機制的自訂例外"""
-    def __init__(self, value):
+    def __init__(self, value, has_value=True):
         self.value = value
+        self.has_value = has_value
 
 class BreakException(Exception):
     """用來模擬 C 語言 break 中斷迴圈的機制"""
@@ -53,6 +54,12 @@ class Interpreter:
         if not ptr_type.endswith('*'):
             raise RuntimeError(f"Semantic Error: cannot dereference non-pointer type '{ptr_type}'")
         return ptr_type[:-1]
+
+    def _ensure_value_expr(self, node):
+        data_type = self._get_node_type(node)
+        if data_type == 'void':
+            raise RuntimeError("Semantic Error: void function call cannot be used as a value")
+        return data_type
     
     def _get_node_type(self, node):
         """輔助函式：推導 AST 節點運算後的資料型別"""
@@ -72,6 +79,11 @@ class Interpreter:
             return base_type[:-1] if base_type.endswith('*') else base_type
         if isinstance(node, CastNode):
             return self._type_name(node.type_node)
+        if isinstance(node, FuncCallNode):
+            if self.builtins.is_builtin(node.name):
+                return 'int'
+            symbol = self.symtable.lookup_func(node.name)
+            return symbol.data_type
         if isinstance(node, BinOpNode):
             # 指標算術的結果型別跟著指標那一側（例如 p + 1 仍是指標）
             left_type = self._get_node_type(node.left)
@@ -169,6 +181,7 @@ class Interpreter:
         # 把刮號裡面所有的參數都先算出來
         args_values = []
         for arg in node.args:
+            self._ensure_value_expr(arg)
             args_values.append(self.visit(arg))
             
         # 判斷是不是我們已經寫好的內建函式 (例如 printf, strcmp)
@@ -208,12 +221,23 @@ class Interpreter:
 
             # 開始執行函式區塊
             ret_val = 0
+            has_return = False
+            return_type = self._type_name(func_node.return_type)
 
             try:
                 try:
                     self.visit(func_node.body)
                 except ReturnException as e: # 有return
                     # 接住 return 回來的值
+                    has_return = True
+                    if return_type != 'void' and not e.has_value:
+                        raise RuntimeError(
+                            f"Semantic Error: non-void function '{node.name}' should return a value"
+                        )
+                    if return_type == 'void' and e.has_value:
+                        raise RuntimeError(
+                            f"Semantic Error: void function '{node.name}' should not return a value"
+                        )
                     ret_val = e.value
             finally:
                 # 清空記憶體與符號表
@@ -223,6 +247,11 @@ class Interpreter:
                 self.symtable.locals = saved_locals
                 self.symtable.block_scopes = saved_block_scopes
                 self.symtable.is_global_scope = saved_is_global
+
+            if return_type != 'void' and not has_return:
+                raise RuntimeError(
+                    f"Semantic Error: non-void function '{node.name}' reached end without return"
+                )
             
             return ret_val
 
@@ -345,6 +374,8 @@ class Interpreter:
 
             # 情況 C：原本的普通單一變數初始化（例如 int x = 5; int *p = &x;）
             else:
+                if data_type != 'void':
+                    self._ensure_value_expr(node.init_expr)
                 value = self.visit(node.init_expr)
                 self._write_typed(symbol.address, data_type, value)  # 涵蓋 int / char / int* / char*
                     
@@ -355,7 +386,7 @@ class Interpreter:
 
         self.symtable.define_func(
             name=node.name,
-            data_type=node.return_type.base_type,
+            data_type=self._type_name(node.return_type),
             func_node=node
         )
 
@@ -365,8 +396,11 @@ class Interpreter:
 
     def visit_TernaryNode(self, node):
         """三元運算 cond ? a : b，依條件結果只計算其中一邊"""
+        self._ensure_value_expr(node.condition)
         if self.visit(node.condition):
+            self._ensure_value_expr(node.then_expr)
             return self.visit(node.then_expr)
+        self._ensure_value_expr(node.else_expr)
         return self.visit(node.else_expr)
 
     def visit_CastNode(self, node):
@@ -385,12 +419,14 @@ class Interpreter:
     def visit_BinOpNode(self, node):
         
         """碰到二元運算子 (例如加減乘除)"""
+        self._ensure_value_expr(node.left)
         left = self.visit(node.left)
 
         if node.op == '&&':
             if left == 0:
                 return 0
             else:
+                self._ensure_value_expr(node.right)
                 if self.visit(node.right) != 0:
                     return 1
                 else: return 0
@@ -398,11 +434,13 @@ class Interpreter:
             if left != 0:
                 return 1
             else:
+                self._ensure_value_expr(node.right)
                 if self.visit(node.right) != 0:
                     return 1
                 else: 
                     return 0
         
+        self._ensure_value_expr(node.right)
         right = self.visit(node.right)
         
         left_type = self._get_node_type(node.left)
@@ -502,6 +540,7 @@ class Interpreter:
             return new_value if node.prefix else old_value
 
         # 其他運算子都需要先算出 operand 的值
+        self._ensure_value_expr(node.operand)
         value = self.visit(node.operand)
 
         if node.op == '-':
@@ -526,6 +565,7 @@ class Interpreter:
     def visit_AssignNode(self, node):
         """處理變數重新賦值，例如 a = 10; 或 arr[i] += 5;"""
 
+        self._ensure_value_expr(node.value)
         right_val = self.visit(node.value) # 把等號右邊的值從node裡面讀出來
 
         # 解析左邊 lvalue 的位址與型別（支援變數、陣列索引 arr[i]、指標解參考 *expr）
@@ -580,6 +620,7 @@ class Interpreter:
     def visit_IfNode(self, node):
         """處理if-else，例如 if (x > 0) { ... } else { ... }"""
         self._trace(node)
+        self._ensure_value_expr(node.condition)
         if self.visit(node.condition) != 0:
             self._visit_control_body(node.then_block)
         elif node.else_block is not None:
@@ -590,15 +631,18 @@ class Interpreter:
         """處理 return 語句"""
         self._trace(node)
         value = 0
+        has_value = node.value is not None
         if node.value is not None:
+            self._ensure_value_expr(node.value)
             value = self.visit(node.value) # 算出 return 後面的數字
             
         # 像丟球一樣，把答案丟出去，瞬間中斷後面的所有程式碼！
-        raise ReturnException(value)
+        raise ReturnException(value, has_value)
 
     def visit_WhileNode(self, node):
         while True:
             self._trace(node)
+            self._ensure_value_expr(node.condition)
             if self.visit(node.condition) == 0:
                 break
             try:
@@ -617,6 +661,7 @@ class Interpreter:
                 break
             except ContinueException:
                 pass
+            self._ensure_value_expr(node.condition)
             if self.visit(node.condition) == 0:
                 break
 
@@ -629,6 +674,8 @@ class Interpreter:
                 self.visit(node.init)
             while True:
                 self._trace(node) # 追蹤條件判定
+                if node.condition is not None:
+                    self._ensure_value_expr(node.condition)
                 if node.condition is not None and self.visit(node.condition) == 0:
                     break
                 try:

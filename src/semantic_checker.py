@@ -81,9 +81,28 @@ class SemanticChecker:
             )
         return ptr_type[:-1]
 
+    def _function_return_type(self, node):
+        if node.name in self.builtin_names:
+            return "int"
+        func = self.functions.get(node.name)
+        if func is None:
+            raise Exception(f"Semantic Error: Undefined function '{node.name}'{self._line(node)}")
+        return self._type_name(func.return_type)
+
+    def _ensure_value_expr(self, node):
+        data_type = self._expr_type(node)
+        if data_type == "void":
+            raise Exception(
+                f"Semantic Error: void function call cannot be used as a value{self._line(node)}"
+            )
+        return data_type
+
     def _expr_type(self, node):
         if isinstance(node, VarNode):
             return self._decl_type(self._lookup_var(node))
+        if isinstance(node, FuncCallNode):
+            self.check_FuncCallNode(node)
+            return self._function_return_type(node)
         if isinstance(node, UnaryOpNode) and node.op == "&":
             return self._expr_type(node.operand) + "*"
         if isinstance(node, UnaryOpNode) and node.op == "*":
@@ -100,6 +119,19 @@ class SemanticChecker:
             if right_type.endswith("*"):
                 return right_type
         return "int"
+
+    def _guarantees_return(self, node):
+        if isinstance(node, ReturnNode):
+            return True
+        if isinstance(node, BlockNode):
+            return any(self._guarantees_return(stmt) for stmt in node.statements)
+        if isinstance(node, IfNode):
+            return (
+                node.else_block is not None
+                and self._guarantees_return(node.then_block)
+                and self._guarantees_return(node.else_block)
+            )
+        return False
 
     def _check_lvalue(self, node):
         if isinstance(node, VarNode):
@@ -142,6 +174,11 @@ class SemanticChecker:
             for param in node.params:
                 self._define_var(param)
             self.check(node.body)
+            if self._type_name(node.return_type) != "void" and not self._guarantees_return(node.body):
+                raise Exception(
+                    f"Semantic Error: non-void function '{node.name}' reached end without return"
+                    f"{self._line(node)}"
+                )
         finally:
             self._leave_scope()
             self.current_function = previous_function
@@ -161,6 +198,8 @@ class SemanticChecker:
                     f"{self._line(node)}"
                 )
         if node.init_expr is not None:
+            if self._type_name(node.type_node) != "void":
+                self._ensure_value_expr(node.init_expr)
             self.check(node.init_expr)
 
     def check_BlockNode(self, node):
@@ -175,6 +214,7 @@ class SemanticChecker:
 
     def check_AssignNode(self, node):
         self._check_lvalue(node.target)
+        self._ensure_value_expr(node.value)
         self.check(node.value)
 
     def check_ArrayIndexNode(self, node):
@@ -183,6 +223,7 @@ class SemanticChecker:
 
     def check_FuncCallNode(self, node):
         for arg in node.args:
+            self._ensure_value_expr(arg)
             self.check(arg)
         if node.name in self.builtin_names:
             return
@@ -196,7 +237,9 @@ class SemanticChecker:
             )
 
     def check_BinOpNode(self, node):
+        self._ensure_value_expr(node.left)
         self.check(node.left)
+        self._ensure_value_expr(node.right)
         self.check(node.right)
 
     def check_UnaryOpNode(self, node):
@@ -206,11 +249,15 @@ class SemanticChecker:
             self._dereference_type(self._expr_type(node.operand), node)
             self.check(node.operand)
         else:
+            self._ensure_value_expr(node.operand)
             self.check(node.operand)
 
     def check_TernaryNode(self, node):
+        self._ensure_value_expr(node.condition)
         self.check(node.condition)
+        self._ensure_value_expr(node.then_expr)
         self.check(node.then_expr)
+        self._ensure_value_expr(node.else_expr)
         self.check(node.else_expr)
 
     def check_CastNode(self, node):
@@ -221,6 +268,7 @@ class SemanticChecker:
             self.check(expr)
 
     def check_IfNode(self, node):
+        self._ensure_value_expr(node.condition)
         self.check(node.condition)
         self._enter_scope()
         try:
@@ -235,6 +283,7 @@ class SemanticChecker:
                 self._leave_scope()
 
     def check_WhileNode(self, node):
+        self._ensure_value_expr(node.condition)
         self.check(node.condition)
         self.loop_depth += 1
         self._enter_scope()
@@ -252,6 +301,7 @@ class SemanticChecker:
         finally:
             self._leave_scope()
             self.loop_depth -= 1
+        self._ensure_value_expr(node.condition)
         self.check(node.condition)
 
     def check_ForNode(self, node):
@@ -261,6 +311,7 @@ class SemanticChecker:
             if node.init is not None:
                 self.check(node.init)
             if node.condition is not None:
+                self._ensure_value_expr(node.condition)
                 self.check(node.condition)
             if node.update is not None:
                 self.check(node.update)
@@ -296,7 +347,19 @@ class SemanticChecker:
     def check_ReturnNode(self, node):
         if self.current_function is None:
             raise Exception(f"Semantic Error: return cannot appear at top level{self._line(node)}")
+        return_type = self._type_name(self.current_function.return_type)
+        if return_type == "void" and node.value is not None:
+            raise Exception(
+                f"Semantic Error: void function '{self.current_function.name}' should not return a value"
+                f"{self._line(node)}"
+            )
+        if return_type != "void" and node.value is None:
+            raise Exception(
+                f"Semantic Error: non-void function '{self.current_function.name}' should return a value"
+                f"{self._line(node)}"
+            )
         if node.value is not None:
+            self._ensure_value_expr(node.value)
             self.check(node.value)
 
     def check_BreakNode(self, node):
