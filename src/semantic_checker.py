@@ -13,6 +13,7 @@ from ast_node import (
     FuncDefNode,
     IfNode,
     InitListNode,
+    IntLiteralNode,
     ProgramNode,
     ReturnNode,
     SwitchNode,
@@ -115,6 +116,16 @@ class SemanticChecker:
         self._define_var(node)
         if node.array_size is not None:
             self.check(node.array_size)
+            if (
+                isinstance(node.array_size, IntLiteralNode)
+                and isinstance(node.init_expr, InitListNode)
+                and len(node.init_expr.expressions) > node.array_size.value
+            ):
+                raise Exception(
+                    f"Semantic Error: excess elements in array initializer for '{node.name}' "
+                    f"(size {node.array_size.value}, got {len(node.init_expr.expressions)})"
+                    f"{self._line(node)}"
+                )
         if node.init_expr is not None:
             self.check(node.init_expr)
 
