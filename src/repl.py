@@ -7,6 +7,7 @@ from memory import Memory
 from preprocessor import Preprocessor
 from sc_builtins import BuiltinManager
 from sc_parser import Parser
+from semantic_checker import SemanticChecker
 from symtable import SymbolTable
 
 
@@ -297,7 +298,12 @@ class LiveREPL:
             return
 
         print(f"{n:3d} | {self.code_buffer[n - 1]}")
-        new_content = input(f"{n:3d} > ")
+        try:
+            new_content = input(f"{n:3d} > ")
+        except EOFError:
+            print()
+            print(f"Line {n} unchanged.")
+            return
         if new_content:
             self.code_buffer[n - 1] = new_content
             self.is_dirty = True
@@ -417,7 +423,9 @@ class LiveREPL:
             print("Buffer is empty.")
             return
         try:
-            self._parse_full_buffer()
+            program_node = self._parse_full_buffer()
+            checker = SemanticChecker(self.builtins_mgr.functions.keys())
+            checker.check(program_node)
             print("No errors found.")
         except SyntaxError as exc:
             print(f"{exc}")

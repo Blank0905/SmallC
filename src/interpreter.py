@@ -309,13 +309,14 @@ class Interpreter:
             if isinstance(node.init_expr, InitListNode):
                 if not is_array:
                     raise RuntimeError(f"Semantic Error: Initializer list cannot be used on non-array variable '{node.name}'")
+                if len(node.init_expr.expressions) > array_len:
+                    raise RuntimeError(
+                        f"Semantic Error: excess elements in array initializer for '{node.name}' "
+                        f"(size {array_len}, got {len(node.init_expr.expressions)})"
+                    )
                 
                 # 遍歷大括號裡的每一個元素，把它算出來並依序寫入陣列對應的記憶體位置
                 for i, expr in enumerate(node.init_expr.expressions):
-                    if i >= array_len:
-                        # 預防填入的數量大於宣告的陣列長度
-                        break 
-                    
                     val = self.visit(expr)
                     element_type = self._array_element_type(symbol)
                     
