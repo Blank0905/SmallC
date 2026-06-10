@@ -298,7 +298,12 @@ class LiveREPL:
             return
 
         print(f"{n:3d} | {self.code_buffer[n - 1]}")
-        new_content = input(f"{n:3d} > ")
+        try:
+            new_content = input(f"{n:3d} > ")
+        except EOFError:
+            print()
+            print(f"Line {n} unchanged.")
+            return
         if new_content:
             self.code_buffer[n - 1] = new_content
             self.is_dirty = True
