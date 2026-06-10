@@ -68,6 +68,39 @@ class SemanticChecker:
                 return scope[node.name]
         raise Exception(f"Semantic Error: Undefined symbol '{node.name}'{self._line(node)}")
 
+    def _decl_type(self, decl):
+        data_type = self._type_name(decl.type_node)
+        if decl.array_size is not None:
+            return data_type + "*"
+        return data_type
+
+    def _dereference_type(self, ptr_type, node):
+        if not ptr_type.endswith("*"):
+            raise Exception(
+                f"Semantic Error: cannot dereference non-pointer type '{ptr_type}'{self._line(node)}"
+            )
+        return ptr_type[:-1]
+
+    def _expr_type(self, node):
+        if isinstance(node, VarNode):
+            return self._decl_type(self._lookup_var(node))
+        if isinstance(node, UnaryOpNode) and node.op == "&":
+            return self._expr_type(node.operand) + "*"
+        if isinstance(node, UnaryOpNode) and node.op == "*":
+            return self._dereference_type(self._expr_type(node.operand), node)
+        if isinstance(node, ArrayIndexNode):
+            return self._dereference_type(self._expr_type(node.array), node)
+        if isinstance(node, CastNode):
+            return self._type_name(node.type_node)
+        if isinstance(node, BinOpNode):
+            left_type = self._expr_type(node.left)
+            if left_type.endswith("*"):
+                return left_type
+            right_type = self._expr_type(node.right)
+            if right_type.endswith("*"):
+                return right_type
+        return "int"
+
     def _check_lvalue(self, node):
         if isinstance(node, VarNode):
             self._lookup_var(node)
@@ -77,6 +110,7 @@ class SemanticChecker:
             self.check(node.index)
             return
         if isinstance(node, UnaryOpNode) and node.op == "*":
+            self._dereference_type(self._expr_type(node.operand), node)
             self.check(node.operand)
             return
         raise Exception(f"Runtime Error: invalid lvalue{self._line(node)}")
@@ -168,6 +202,9 @@ class SemanticChecker:
     def check_UnaryOpNode(self, node):
         if node.op in ("++", "--"):
             self._check_lvalue(node.operand)
+        elif node.op == "*":
+            self._dereference_type(self._expr_type(node.operand), node)
+            self.check(node.operand)
         else:
             self.check(node.operand)
 
