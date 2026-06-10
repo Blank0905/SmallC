@@ -21,6 +21,7 @@ from ast_node import (
     UnaryOpNode,
     VarDeclNode,
     VarNode,
+    WhileNode,
 )
 
 
@@ -120,6 +121,27 @@ class SemanticChecker:
                 return right_type
         return "int"
 
+    def _is_constant_true(self, node):
+        return isinstance(node, IntLiteralNode) and node.value != 0
+
+    def _contains_loop_break(self, node):
+        if isinstance(node, BreakNode):
+            return True
+        if isinstance(node, (WhileNode, ForNode, DoWhileNode)):
+            return False
+        if isinstance(node, BlockNode):
+            return any(self._contains_loop_break(stmt) for stmt in node.statements)
+        if isinstance(node, IfNode):
+            return (
+                self._contains_loop_break(node.then_block)
+                or (node.else_block is not None and self._contains_loop_break(node.else_block))
+            )
+        if isinstance(node, SwitchNode):
+            if any(self._contains_loop_break(block) for _, block in node.cases):
+                return True
+            return node.default_stmt is not None and self._contains_loop_break(node.default_stmt)
+        return False
+
     def _guarantees_return(self, node):
         if isinstance(node, ReturnNode):
             return True
@@ -130,6 +152,24 @@ class SemanticChecker:
                 node.else_block is not None
                 and self._guarantees_return(node.then_block)
                 and self._guarantees_return(node.else_block)
+            )
+        if isinstance(node, WhileNode):
+            return (
+                self._is_constant_true(node.condition)
+                and not self._contains_loop_break(node.body)
+                and self._guarantees_return(node.body)
+            )
+        if isinstance(node, ForNode):
+            return (
+                (node.condition is None or self._is_constant_true(node.condition))
+                and not self._contains_loop_break(node.body)
+                and self._guarantees_return(node.body)
+            )
+        if isinstance(node, DoWhileNode):
+            return (
+                self._is_constant_true(node.condition)
+                and not self._contains_loop_break(node.body)
+                and self._guarantees_return(node.body)
             )
         return False
 
