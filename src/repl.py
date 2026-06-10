@@ -7,6 +7,7 @@ from memory import Memory
 from preprocessor import Preprocessor
 from sc_builtins import BuiltinManager
 from sc_parser import Parser
+from semantic_checker import SemanticChecker
 from symtable import SymbolTable
 
 
@@ -417,7 +418,9 @@ class LiveREPL:
             print("Buffer is empty.")
             return
         try:
-            self._parse_full_buffer()
+            program_node = self._parse_full_buffer()
+            checker = SemanticChecker(self.builtins_mgr.functions.keys())
+            checker.check(program_node)
             print("No errors found.")
         except SyntaxError as exc:
             print(f"{exc}")
