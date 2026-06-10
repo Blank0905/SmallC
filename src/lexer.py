@@ -54,6 +54,14 @@ class Lexer:
             return None
         return self.text[next_pos]
 
+    def _is_ascii_digit(self, ch):
+        return ch is not None and '0' <= ch <= '9'
+
+    def _is_hex_digit(self, ch):
+        return ch is not None and (
+            '0' <= ch <= '9' or 'a' <= ch.lower() <= 'f'
+        )
+
     def tokenize(self):#給其他東西進來的進入點
         """回傳所有 Token 的列表，直到 EOF"""
         tokens = []
@@ -157,7 +165,7 @@ class Lexer:
             self.advance()
             self.advance()
             hex_digits = ''
-            while self.current_char is not None and (self.current_char.isdigit() or self.current_char.lower() in {'a', 'b', 'c', 'd', 'e', 'f'}):
+            while self._is_hex_digit(self.current_char):
                 hex_digits += self.current_char
                 self.advance()
             if not hex_digits:
@@ -166,7 +174,7 @@ class Lexer:
 
         # 處理一般十進位
         result = ''
-        while self.current_char is not None and self.current_char.isdigit():
+        while self._is_ascii_digit(self.current_char):
             result += self.current_char
             self.advance()
         return int(result)
@@ -190,7 +198,7 @@ class Lexer:
                 continue
 
             # 辨識整數
-            if self.current_char.isdigit():
+            if self._is_ascii_digit(self.current_char):
                 return Token('INT_CONST', self.integer(), self.line)
             
             if self.current_char.isalpha() or self.current_char == '_':

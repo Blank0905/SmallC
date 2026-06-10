@@ -22,6 +22,8 @@ class Interpreter:
         self.memory = memory
         self.builtins = builtins
         self.string_pool = {}
+        self.call_depth = 0
+        self.max_call_depth = 128
 
     def visit(self, node):
         """
@@ -197,6 +199,11 @@ class Interpreter:
                     f"Semantic Error: function '{node.name}' expected "
                     f"{len(func_node.params)} argument(s), got {len(args_values)}"
                 )
+            if self.call_depth >= self.max_call_depth:
+                raise RuntimeError(
+                    f"Runtime Error: call stack overflow (maximum call depth {self.max_call_depth})"
+                )
+            self.call_depth += 1
 
             # === 備份目前的區域變數狀態 ===
             saved_locals = self.symtable.locals.copy()
@@ -247,6 +254,7 @@ class Interpreter:
                 self.symtable.locals = saved_locals
                 self.symtable.block_scopes = saved_block_scopes
                 self.symtable.is_global_scope = saved_is_global
+                self.call_depth -= 1
 
             if return_type != 'void' and not has_return:
                 raise RuntimeError(

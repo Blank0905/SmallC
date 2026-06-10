@@ -102,50 +102,111 @@ class BuiltinManager:
         return ord(char)
     
     def builtin_scanf(self, format_addr, *args):
-        #因為printf還支援%s,%x所以這邊也加上
         fmt = self.memory.read_string(format_addr)
         try:
-            user_input = input().split()
+            user_input = input()
         except EOFError:
             return -1
-        
-        arg_idx = 0
-        count = 0
-        pos = 0
 
-        while pos < len(fmt) and arg_idx < len(args) and count < len(user_input):
-            if fmt[pos] == '%' and pos + 1 < len(fmt):
+        def skip_space(index):
+            while index < len(user_input) and user_input[index].isspace():
+                index += 1
+            return index
+
+        def read_digits(index, valid_chars, allow_sign=False):
+            start = index
+            if allow_sign and index < len(user_input) and user_input[index] in "+-":
+                index += 1
+            digit_start = index
+            while index < len(user_input) and user_input[index].lower() in valid_chars:
+                index += 1
+            if index == digit_start:
+                return None, start
+            return user_input[start:index], index
+
+        input_pos = 0
+        pos = 0
+        arg_idx = 0
+        assigned = 0
+
+        while pos < len(fmt):
+            if fmt[pos].isspace():
+                input_pos = skip_space(input_pos)
+                pos += 1
+                continue
+
+            if fmt[pos] != '%':
+                if input_pos >= len(user_input) or user_input[input_pos] != fmt[pos]:
+                    break
+                input_pos += 1
+                pos += 1
+                continue
+
+            if pos + 1 < len(fmt):
                 specifier = fmt[pos+1]
+                if specifier == '%':
+                    if input_pos >= len(user_input) or user_input[input_pos] != '%':
+                        break
+                    input_pos += 1
+                    pos += 2
+                    continue
+
+                if arg_idx >= len(args):
+                    break
                 target_addr = args[arg_idx]
-                current_val = user_input[count]
 
                 if specifier == 'd':
-                    #(bytes = 4)
-                    val = int(user_input[count])
+                    input_pos = skip_space(input_pos)
+                    token, next_pos = read_digits(input_pos, set("0123456789"), allow_sign=True)
+                    if token is None:
+                        break
+                    val = int(token, 10)
                     self.memory.write_int(target_addr, val)
-                    count +=1
-                    arg_idx +=1
+                    input_pos = next_pos
+                    arg_idx += 1
+                    assigned += 1
                 elif specifier == 'c':
-                    #(byte = 1)
-                    val = ord(user_input[count][0])
+                    if input_pos >= len(user_input):
+                        break
+                    val = ord(user_input[input_pos])
                     self.memory.write_char(target_addr, val)
-                    count +=1
-                    arg_idx +=1
+                    input_pos += 1
+                    arg_idx += 1
+                    assigned += 1
                 elif specifier == 's':
+                    input_pos = skip_space(input_pos)
+                    start = input_pos
+                    while input_pos < len(user_input) and not user_input[input_pos].isspace():
+                        input_pos += 1
+                    if input_pos == start:
+                        break
+                    current_val = user_input[start:input_pos]
                     for i, char in enumerate(current_val):
                         self.memory.write_char(target_addr + i, ord(char))
                     self.memory.write_char(target_addr + len(current_val), 0)
-                    count += 1
-                    arg_idx +=1
+                    arg_idx += 1
+                    assigned += 1
                 elif specifier == 'x':
-                    self.memory.write_int(target_addr, int(current_val, 16))
-                    count +=1
-                    arg_idx+=1
-
-                pos +=2
+                    input_pos = skip_space(input_pos)
+                    sign = ""
+                    if input_pos < len(user_input) and user_input[input_pos] in "+-":
+                        sign = user_input[input_pos]
+                        input_pos += 1
+                    if input_pos + 1 < len(user_input) and user_input[input_pos:input_pos+2].lower() == "0x":
+                        input_pos += 2
+                    token, next_pos = read_digits(input_pos, set("0123456789abcdef"))
+                    if token is None:
+                        break
+                    self.memory.write_int(target_addr, int(sign + token, 16))
+                    input_pos = next_pos
+                    arg_idx += 1
+                    assigned += 1
+                else:
+                    break
+                pos += 2
             else:
-                pos +=1
-        return count
+                break
+        return assigned
     
     # ─── 字串處理函式 ────────────────────────────────────────────────────────
     def builtin_strlen(self, addr):
@@ -188,7 +249,7 @@ class BuiltinManager:
         return min(a, b)
     def builtin_pow(self, base, exp):
         if exp < 0:
-            return 0
+            raise RuntimeError("Runtime Error: pow() exponent must be non-negative.")
         if exp == 0:
             return 1
         return int(base ** exp) #強轉成整數型別
