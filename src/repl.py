@@ -395,17 +395,20 @@ class LiveREPL:
             print(f"[!] 解析錯誤: {exc}")
             return
 
+        has_main = any(
+            isinstance(decl, FuncDefNode) and decl.name == "main"
+            for decl in program_node.declarations
+        )
+        if not has_main:
+            print("[!] Semantic Error: missing main() function.")
+            return
+
         self._reset_runtime()
         self.interpreter.program_buffer = list(self.code_buffer)
         self.interpreter.trace = self.trace
         try:
             return_value = self.interpreter.visit(program_node)
-            has_main = any(
-                isinstance(decl, FuncDefNode) and decl.name == "main"
-                for decl in program_node.declarations
-            )
-            if has_main:
-                print(f"Program exited with return value {return_value}.")
+            print(f"Program exited with return value {return_value}.")
         except Exception as exc:
             print(f"[*] 執行 main 時發生未預期錯誤: {exc}")
 
