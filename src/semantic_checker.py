@@ -157,10 +157,12 @@ class SemanticChecker:
                             f"Semantic Error: Redefinition of function '{decl.name}'{self._line(decl)}"
                         )
                     self.functions[decl.name] = decl
+                elif isinstance(decl, VarDeclNode):
+                    self._define_var(decl)
 
             for decl in node.declarations:
                 if isinstance(decl, VarDeclNode):
-                    self.check(decl)
+                    self._check_var_decl_details(decl)
                 elif isinstance(decl, FuncDefNode):
                     self.check(decl)
         finally:
@@ -185,6 +187,9 @@ class SemanticChecker:
 
     def check_VarDeclNode(self, node):
         self._define_var(node)
+        self._check_var_decl_details(node)
+
+    def _check_var_decl_details(self, node):
         if node.array_size is not None:
             self.check(node.array_size)
             if (
