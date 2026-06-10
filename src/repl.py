@@ -194,6 +194,16 @@ class LiveREPL:
         tokens = Lexer(processed).tokenize()
         return Parser(tokens).parse()
 
+    def _confirm_discard_changes(self, action):
+        if not self.is_dirty:
+            return True
+        try:
+            ans = input(f"Buffer has unsaved changes. Really {action}? (y/N): ")
+        except EOFError:
+            print()
+            return False
+        return ans.lower() == "y"
+
     def _execute_pending(self):
         source_code = "\n".join(self.pending_lines)
         try:
@@ -228,10 +238,8 @@ class LiveREPL:
         if not args:
             print("Error: Missing filename. Usage: LOAD <filename>")
             return
-        if self.is_dirty:
-            ans = input("Buffer has unsaved changes. Really load? (y/N): ")
-            if ans.lower() != "y":
-                return
+        if not self._confirm_discard_changes("load"):
+            return
         try:
             with open(args, "r", encoding="utf-8") as f:
                 self.code_buffer = [line.rstrip("\n") for line in f.readlines()]
@@ -365,10 +373,8 @@ class LiveREPL:
             print(f"Appended {count} line(s).")
 
     def _cmd_new(self):
-        if self.is_dirty:
-            ans = input("Buffer has unsaved changes. Really clear? (y/N): ")
-            if ans.lower() != "y":
-                return
+        if not self._confirm_discard_changes("clear"):
+            return
         self.pending_lines.clear()
         self.code_buffer.clear()
         self.is_dirty = False
@@ -500,11 +506,7 @@ class LiveREPL:
         print("作者1, 2, 3")
 
     def _confirm_quit(self):
-        if self.is_dirty:
-            ans = input("Buffer has unsaved changes. Really quit? (y/N): ")
-            if ans.lower() != "y":
-                return False
-        return True
+        return self._confirm_discard_changes("quit")
 
     def _dispatch_command(self, line):
         parts = line.strip().split(maxsplit=1)
