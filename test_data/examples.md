@@ -274,7 +274,7 @@ CHECK
 ```c
 /* 展示 FUNCS 指令 */
 sc> LOAD bubble_sort.sc
-sc> CHECK
+sc> RUN
 sc> FUNCS
 // 會列出所有已定義的函式，包含自定義與內建函式
 ```
