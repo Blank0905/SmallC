@@ -249,7 +249,7 @@ class BuiltinManager:
         return min(a, b)
     def builtin_pow(self, base, exp):
         if exp < 0:
-            raise RuntimeError("Runtime Error: pow() exponent must be non-negative.")
+            return 0  # 作業規格：exp 為負數時回傳 0（整數除法的自然結果）
         if exp == 0:
             return 1
         return int(base ** exp) #強轉成整數型別
